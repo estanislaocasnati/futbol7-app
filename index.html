@@ -21,11 +21,15 @@
     .mono { font-family: 'JetBrains Mono', monospace; }
     .container { max-width: 820px; margin: 0 auto; padding: 14px; }
 
-    /* Login Modal */
+    /* Login Modal con Scroll Táctil Nativo Corregido */
     .login-screen { position: fixed; inset: 0; background: rgba(9,13,22,0.96); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
-    .login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; width: 100%; max-width: 480px; padding: 20px; }
-    .player-select-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; max-height: 310px; overflow-y: auto; margin: 14px 0; }
-    .player-chip { padding: 10px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-weight: 600; font-size: 0.83rem; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; width: 100%; max-width: 480px; padding: 20px; text-align: center; }
+    .player-select-grid { 
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; 
+      max-height: 45vh; overflow-y: auto; -webkit-overflow-scrolling: touch; 
+      margin: 14px 0; text-align: left; padding-right: 4px;
+    }
+    .player-chip { padding: 11px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-weight: 600; font-size: 0.83rem; cursor: pointer; display: flex; align-items: center; gap: 8px; }
     .player-chip.selected { border-color: var(--emerald); background: var(--emerald-dim); color: #6ee7b7; }
 
     /* Header & Tabs */
@@ -73,9 +77,10 @@
     .nominee-card.mvp-active { background: var(--amber-dim); border-color: var(--amber); color: #fde68a; }
     .nominee-card.cry-active { background: var(--rose-dim); border-color: var(--rose); color: #fecdd3; }
 
-    .btn { padding: 10px 14px; border-radius: 9px; font-weight: 700; font-size: 0.82rem; border: none; cursor: pointer; }
+    .btn { padding: 10px 14px; border-radius: 9px; font-weight: 700; font-size: 0.82rem; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
     .btn-emerald { background: var(--emerald); color: #052e16; }
     .btn-amber { background: var(--amber); color: #451a03; }
+    .btn-whatsapp { background: #25d366; color: #fff; }
     .btn-ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
     .input { background: #090d16; border: 1px solid var(--border); color: var(--text); padding: 9px 11px; border-radius: 8px; font-size: 0.83rem; width: 100%; }
 
@@ -92,16 +97,19 @@
   <!-- PANTALLA DE BIENVENIDA -->
   <div class="login-screen" id="loginScreen" style="display:none;">
     <div class="login-box">
-      <h2 style="font-size:1.05rem; font-weight:800; margin-bottom:4px;">⚽ ¿Quién sos?</h2>
-      <p style="font-size:0.75rem; color:var(--muted);">Tocá tu nombre y ya quedás logueado automáticamente en este celular.</p>
+      <h2 style="font-size:1.1rem; font-weight:800; margin-bottom:4px;">⚽ ¿Quién sos?</h2>
+      <p style="font-size:0.75rem; color:var(--muted);">Deslizá y tocá tu nombre para entrar.</p>
       <div class="player-select-grid" id="loginPlayersGrid"></div>
 
-      <div id="adminPinWrapper" style="display:none; margin-top:10px;">
-        <label style="font-size:0.73rem; color:var(--amber); font-weight:700; display:block; margin-bottom:4px;">🛡️ Usuario Administrador — Ingresá PIN (9999):</label>
-        <input type="password" id="loginPinInput" class="input mono" placeholder="••••" maxlength="4" style="text-align:center;" />
+      <button class="btn btn-emerald" style="width:100%; margin-top:10px;" onclick="confirmPlayerLogin()">Entrar a la App</button>
+      
+      <div style="margin-top:14px; border-top:1px solid var(--border); padding-top:10px;">
+        <button class="btn btn-ghost" style="font-size:0.74rem; color:var(--amber); width:100%;" onclick="toggleAdminPrompt()">🛡️ ¿Sos Administrador (Lao, Juan Manuel o Cote)?</button>
+        <div id="adminPinBox" style="display:none; margin-top:8px;">
+          <input type="password" id="adminMasterPin" class="input mono" placeholder="PIN de Admin (9999)" maxlength="4" style="text-align:center; margin-bottom:6px;" />
+          <button class="btn btn-amber" style="width:100%; font-size:0.75rem;" onclick="confirmAdminLogin()">Activar Modo Administrador</button>
+        </div>
       </div>
-
-      <button class="btn btn-emerald" style="width:100%; margin-top:12px;" onclick="confirmLogin()">Entrar a la App</button>
     </div>
   </div>
 
@@ -181,9 +189,12 @@
       <div class="card">
         <div class="card-header">
           <div class="card-title">⚖️ Sorteo 7 vs 7 (<span id="convocadosCount">14/14</span>)</div>
-          <button class="btn btn-emerald" onclick="generateBalancedTeams()">🎲 Sortear Parejos</button>
+          <!-- SOLO LOS ADMINS PUEDEN SORTEAR -->
+          <button class="btn btn-emerald" id="sorteoBtn" style="display:none;" onclick="generateBalancedTeams()">🎲 Sortear Parejos</button>
         </div>
-        <div class="player-select-grid" id="convocadosGrid" style="max-height:none; grid-template-columns:repeat(auto-fill, minmax(135px, 1fr));"></div>
+        <div id="nonAdminNotice" style="font-size:0.75rem; color:var(--muted); margin-bottom:8px; display:none;">🔒 Solo los administradores pueden realizar el sorteo automático de equipos.</div>
+        
+        <div class="player-select-grid" id="convocadosGrid" style="max-height:42vh; grid-template-columns:repeat(auto-fill, minmax(135px, 1fr));"></div>
         <div id="teamsOutput" style="margin-top:14px;"></div>
       </div>
     </section>
@@ -224,9 +235,6 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    // =========================================================================
-    // 🔑 NAVEGACIÓN Y CONFIGURACIÓN GLOBAL
-    // =========================================================================
     function openTab(tab, btn) {
       document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -265,13 +273,11 @@
     function matchVal(p) { return (baseAvg(p) * 0.70) + (Number(p.racha) * 0.30); }
 
     async function loadAllData() {
-      if (!db) { showToast('⚠️ Error cargando cliente de Supabase'); return; }
+      if (!db) { showToast('⚠️ Error cargando Supabase'); return; }
       
       const { data: pData, error } = await db.from('jugadores').select('*').order('nombre');
-      if (error) { 
-        showToast('⚠️ Error conectando a Supabase: ' + error.message); 
-        return; 
-      }
+      if (error) { showToast('⚠️ Error conectando: ' + error.message); return; }
+      
       players = pData || [];
       if (selectedConvocados.length === 0 && players.length > 0) {
         selectedConvocados = players.slice(0, 14).map(p => p.id);
@@ -292,28 +298,28 @@
     function checkSavedLogin() {
       const savedId = localStorage.getItem('f7_player_id');
       const found = players.find(p => p.id === Number(savedId));
-      if (found) { setLoggedPlayer(found); return; }
+      if (found) { 
+        setLoggedPlayer(found); 
+        return; 
+      }
       openLoginModal();
     }
 
     function openLoginModal() {
       const scr = document.getElementById('loginScreen');
       if (scr) scr.style.display = 'flex';
-      selectedLoginPlayerId = players[0]?.id || null;
-      renderLoginTiles();
+      const regularPlayers = players.filter(p => !p.es_admin);
+      selectedLoginPlayerId = regularPlayers[0]?.id || players[0]?.id || null;
+      renderLoginTiles(regularPlayers);
     }
 
-    function renderLoginTiles() {
-      const sel = players.find(p => p.id === selectedLoginPlayerId);
-      const pinWrap = document.getElementById('adminPinWrapper');
-      if (pinWrap) pinWrap.style.display = sel?.es_admin ? 'block' : 'none';
-      
+    function renderLoginTiles(list) {
       const grid = document.getElementById('loginPlayersGrid');
       if (grid) {
-        grid.innerHTML = players.map(p => `
+        grid.innerHTML = list.map(p => `
           <button class="player-chip ${p.id === selectedLoginPlayerId ? 'selected' : ''}" onclick="selectLoginTile(${p.id})">
             <div class="avatar">${initials(p.nombre)}</div>
-            <span>${p.nombre} ${p.es_admin ? '🛡️' : ''}</span>
+            <span>${p.nombre}</span>
           </button>
         `).join('');
       }
@@ -321,22 +327,39 @@
 
     function selectLoginTile(id) {
       selectedLoginPlayerId = id;
-      renderLoginTiles();
+      renderLoginTiles(players.filter(p => !p.es_admin));
     }
 
-    function confirmLogin() {
+    function confirmPlayerLogin() {
       const player = players.find(p => p.id === selectedLoginPlayerId);
       if (!player) return;
-      if (player.es_admin) {
-        const pinIn = document.getElementById('loginPinInput');
-        const pin = pinIn ? pinIn.value.trim() : '';
-        if (pin !== player.pin) { showToast('❌ PIN de Admin incorrecto'); return; }
-      }
       localStorage.setItem('f7_player_id', player.id);
       setLoggedPlayer(player);
       const scr = document.getElementById('loginScreen');
       if (scr) scr.style.display = 'none';
       showToast(`👋 ¡Hola ${player.nombre}!`);
+      renderAll();
+    }
+
+    function toggleAdminPrompt() {
+      const box = document.getElementById('adminPinBox');
+      if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function confirmAdminLogin() {
+      const pin = document.getElementById('adminMasterPin').value.trim();
+      if (pin !== '9999') {
+        showToast('❌ PIN de Admin incorrecto');
+        return;
+      }
+      const adminPlayer = players.find(p => p.es_admin) || players[0];
+      if (!adminPlayer) return;
+
+      localStorage.setItem('f7_player_id', adminPlayer.id);
+      setLoggedPlayer(adminPlayer);
+      const scr = document.getElementById('loginScreen');
+      if (scr) scr.style.display = 'none';
+      showToast('🛡️ Modo Administrador activado');
       renderAll();
     }
 
@@ -346,14 +369,23 @@
       const vname = document.getElementById('voterNameLabel');
       const urole = document.getElementById('currentUserRole');
       const adtab = document.getElementById('adminTabBtn');
+      const sorteoBtn = document.getElementById('sorteoBtn');
+      const nonAdminNotice = document.getElementById('nonAdminNotice');
 
       if (uname) uname.textContent = p.nombre;
       if (vname) vname.textContent = p.nombre;
       if (urole) urole.style.display = p.es_admin ? 'inline-block' : 'none';
       if (adtab) adtab.style.display = p.es_admin ? 'block' : 'none';
+      
+      // Control de visibilidad del botón de sorteo exclusivo para Admins
+      if (sorteoBtn) sorteoBtn.style.display = p.es_admin ? 'inline-flex' : 'none';
+      if (nonAdminNotice) nonAdminNotice.style.display = p.es_admin ? 'none' : 'block';
     }
 
-    function switchUser() { localStorage.removeItem('f7_player_id'); openLoginModal(); }
+    function switchUser() { 
+      localStorage.removeItem('f7_player_id'); 
+      openLoginModal(); 
+    }
 
     function renderHome() {
       if (currentMatch) {
@@ -482,7 +514,9 @@
       if (cGrid) {
         cGrid.innerHTML = players.map(p => {
           const sel = selectedConvocados.includes(p.id);
-          return `<button class="player-chip ${sel?'selected':''}" onclick="toggleConvocado(${p.id})">
+          // Los jugadores comunes no pueden tildar convocados, solo los admins
+          const clickAction = loggedPlayer?.es_admin ? `onclick="toggleConvocado(${p.id})"` : '';
+          return `<button class="player-chip ${sel?'selected':''}" ${clickAction} style="${!loggedPlayer?.es_admin ? 'opacity:0.85; cursor:default;' : ''}">
             <div class="avatar">${initials(p.nombre)}</div>
             <div><div>${p.nombre}</div>${loggedPlayer?.es_admin ? `<div class="mono" style="font-size:0.68rem; color:var(--amber);"> Val: ${matchVal(p).toFixed(2)}</div>` : ''}</div>
           </button>`;
@@ -492,12 +526,14 @@
     }
 
     function toggleConvocado(id) {
+      if (!loggedPlayer?.es_admin) return;
       if (selectedConvocados.includes(id)) selectedConvocados = selectedConvocados.filter(x => x !== id);
       else if (selectedConvocados.length < 14) selectedConvocados.push(id);
       renderTeams();
     }
 
     function generateBalancedTeams() {
+      if (!loggedPlayer?.es_admin) return;
       if (selectedConvocados.length !== 14) { showToast('⚠️ Seleccioná exactamente 14 jugadores'); return; }
       const pool = players.filter(p => selectedConvocados.includes(p.id));
       let bestDiff = 999, bestSplit = null;
@@ -527,13 +563,27 @@
         <div class="awards-row">
           <div class="card" style="margin:0;">
             <div class="card-header"><strong>⚪ EQUIPO CLARO</strong>${loggedPlayer?.es_admin ? `<span class="mono badge badge-emerald">${sumA} pts</span>` : ''}</div>
-            ${A.map(p => `<div style="padding:5px 0; border-bottom:1px solid var(--border); font-size:0.82rem;">${p.nombre} ${loggedPlayer?.es_admin ? `<span class="mono" style="float:right; color:var(--muted);">${matchVal(p).toFixed(2)}</span>`:''}</div>`).join('')}
+            ${A.map(p => `<div style="padding:5px 0; border-bottom:1px solid var(--border); font-size:0.82rem;">${p.nombre}</div>`).join('')}
           </div>
           <div class="card" style="margin:0;">
             <div class="card-header"><strong>⚫ EQUIPO OSCURO</strong>${loggedPlayer?.es_admin ? `<span class="mono badge badge-emerald">${sumB} pts</span>` : ''}</div>
-            ${B.map(p => `<div style="padding:5px 0; border-bottom:1px solid var(--border); font-size:0.82rem;">${p.nombre} ${loggedPlayer?.es_admin ? `<span class="mono" style="float:right; color:var(--muted);">${matchVal(p).toFixed(2)}</span>`:''}</div>`).join('')}
+            ${B.map(p => `<div style="padding:5px 0; border-bottom:1px solid var(--border); font-size:0.82rem;">${p.nombre}</div>`).join('')}
           </div>
-        </div>`;
+        </div>
+        <button class="btn btn-whatsapp" style="width:100%; margin-top:12px;" onclick="shareOnWhatsApp()">📤 Compartir Equipos por WhatsApp</button>`;
+    }
+
+    function shareOnWhatsApp() {
+      const A = players.filter(p => lastSortedTeams.claro.includes(p.id)).map(p => `• ${p.nombre}`).join('\n');
+      const B = players.filter(p => lastSortedTeams.oscuro.includes(p.id)).map(p => `• ${p.nombre}`).join('\n');
+      
+      const text = `⚽ *EQUIPOS PARA EL MIÉRCOLES* ⚽\n\n` +
+                   `⚪ *EQUIPO CLARO*\n${A}\n\n` +
+                   `⚫ *EQUIPO OSCURO*\n${B}\n\n` +
+                   `¡A dejar todo en la cancha! 🔥`;
+
+      const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+      window.open(url, '_blank');
     }
 
     function renderAdmin() {
@@ -572,6 +622,7 @@
     }
 
     async function publishNewMatch() {
+      if (!loggedPlayer?.es_admin) return;
       if (lastSortedTeams.claro.length !== 7) { showToast('⚠️ Primero sorteá los equipos en la pestaña Equipos 7v7'); return; }
       const fIn = document.getElementById('admFecha');
       const gCIn = document.getElementById('admGolesClaro');
@@ -594,7 +645,6 @@
 
     function renderAll() { renderHome(); renderVote(); renderTeams(); renderAdmin(); }
     
-    // Iniciar app al cargar la página
     window.addEventListener('DOMContentLoaded', () => {
       loadAllData();
     });

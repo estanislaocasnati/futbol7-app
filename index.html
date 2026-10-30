@@ -21,7 +21,7 @@
     .mono { font-family: 'JetBrains Mono', monospace; }
     .container { max-width: 820px; margin: 0 auto; padding: 14px; }
 
-    /* Login Modal con Scroll Táctil Nativo Corregido */
+    /* Login Modal con Scroll Táctil Nativo */
     .login-screen { position: fixed; inset: 0; background: rgba(9,13,22,0.96); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
     .login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; width: 100%; max-width: 480px; padding: 20px; text-align: center; }
     .player-select-grid { 
@@ -106,7 +106,7 @@
       <div style="margin-top:14px; border-top:1px solid var(--border); padding-top:10px;">
         <button class="btn btn-ghost" style="font-size:0.74rem; color:var(--amber); width:100%;" onclick="toggleAdminPrompt()">🛡️ ¿Sos Administrador (Lao, Juan Manuel o Cote)?</button>
         <div id="adminPinBox" style="display:none; margin-top:8px;">
-          <input type="password" id="adminMasterPin" class="input mono" placeholder="PIN de Admin (9999)" maxlength="4" style="text-align:center; margin-bottom:6px;" />
+          <input type="password" id="adminMasterPin" class="input mono" placeholder="Ingresá tu PIN" maxlength="4" style="text-align:center; margin-bottom:6px;" />
           <button class="btn btn-amber" style="width:100%; font-size:0.75rem;" onclick="confirmAdminLogin()">Activar Modo Administrador</button>
         </div>
       </div>
@@ -189,7 +189,6 @@
       <div class="card">
         <div class="card-header">
           <div class="card-title">⚖️ Sorteo 7 vs 7 (<span id="convocadosCount">14/14</span>)</div>
-          <!-- SOLO LOS ADMINS PUEDEN SORTEAR -->
           <button class="btn btn-emerald" id="sorteoBtn" style="display:none;" onclick="generateBalancedTeams()">🎲 Sortear Parejos</button>
         </div>
         <div id="nonAdminNotice" style="font-size:0.75rem; color:var(--muted); margin-bottom:8px; display:none;">🔒 Solo los administradores pueden realizar el sorteo automático de equipos.</div>
@@ -377,7 +376,6 @@
       if (urole) urole.style.display = p.es_admin ? 'inline-block' : 'none';
       if (adtab) adtab.style.display = p.es_admin ? 'block' : 'none';
       
-      // Control de visibilidad del botón de sorteo exclusivo para Admins
       if (sorteoBtn) sorteoBtn.style.display = p.es_admin ? 'inline-flex' : 'none';
       if (nonAdminNotice) nonAdminNotice.style.display = p.es_admin ? 'none' : 'block';
     }
@@ -514,7 +512,6 @@
       if (cGrid) {
         cGrid.innerHTML = players.map(p => {
           const sel = selectedConvocados.includes(p.id);
-          // Los jugadores comunes no pueden tildar convocados, solo los admins
           const clickAction = loggedPlayer?.es_admin ? `onclick="toggleConvocado(${p.id})"` : '';
           return `<button class="player-chip ${sel?'selected':''}" ${clickAction} style="${!loggedPlayer?.es_admin ? 'opacity:0.85; cursor:default;' : ''}">
             <div class="avatar">${initials(p.nombre)}</div>

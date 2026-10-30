@@ -228,9 +228,12 @@
     // 🔑 LLAVES DE SUPABASE CONFIGURADAS
     // =========================================================================
     const SUPABASE_URL = 'https://gkqspcytkyrzyfpxfjln.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_key_aqui_o_tu_anon_key';
+    const SUPABASE_ANON_KEY = 'sb_publishable_SPldvSwxsJUT4dwBQadDbQ_rs3aspRc';
 
-    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false },
+      db: { schema: 'public' }
+    });
     const QUORUM_PER_TEAM = 4;
 
     let players = [], currentMatch = null, currentVotes = [];
@@ -419,119 +422,3 @@
       if (error) { showToast('❌ Error o voto duplicado'); return; }
 
       const mvpP = players.find(p => p.id === selectedMvpId);
-      const cryP = players.find(p => p.id === selectedCryId);
-      if (mvpP) await db.from('jugadores').update({ mvps: mvpP.mvps + 1 }).eq('id', mvpP.id);
-      if (cryP) await db.from('jugadores').update({ lloron: cryP.lloron + 1 }).eq('id', cryP.id);
-
-      showToast('✅ ¡Voto guardado!');
-      await loadAllData();
-    }
-
-    function renderTeams() {
-      document.getElementById('convocadosCount').textContent = `${selectedConvocados.length}/14`;
-      document.getElementById('convocadosGrid').innerHTML = players.map(p => {
-        const sel = selectedConvocados.includes(p.id);
-        return `<button class="player-chip ${sel?'selected':''}" onclick="toggleConvocado(${p.id})">
-          <div class="avatar">${initials(p.nombre)}</div>
-          <div><div>${p.nombre}</div>${loggedPlayer?.es_admin ? `<div class="mono" style="font-size:0.68rem; color:var(--amber);"> Val: ${matchVal(p).toFixed(2)}</div>` : ''}</div>
-        </button>`;
-      }).join('');
-      renderSortedOutput();
-    }
-
-    function toggleConvocado(id) {
-      if (selectedConvocados.includes(id)) selectedConvocados = selectedConvocados.filter(x => x !== id);
-      else if (selectedConvocados.length < 14) selectedConvocados.push(id);
-      renderTeams();
-    }
-
-    function generateBalancedTeams() {
-      if (selectedConvocados.length !== 14) { showToast('⚠️ Seleccioná exactamente 14 jugadores'); return; }
-      const pool = players.filter(p => selectedConvocados.includes(p.id));
-      let bestDiff = 999, bestSplit = null;
-
-      for (let i = 0; i < 250; i++) {
-        const shuf = [...pool].sort(() => Math.random() - 0.5);
-        const A = shuf.slice(0, 7), B = shuf.slice(7, 14);
-        const sumA = A.reduce((s, p) => s + matchVal(p), 0);
-        const sumB = B.reduce((s, p) => s + matchVal(p), 0);
-        const diff = Math.abs(sumA - sumB);
-        if (diff < bestDiff) { bestDiff = diff; bestSplit = { claro: A.map(p=>p.id), oscuro: B.map(p=>p.id) }; }
-      }
-      lastSortedTeams = bestSplit;
-      renderSortedOutput();
-      showToast('⚖️ Equipos parejos generados');
-    }
-
-    function renderSortedOutput() {
-      if (!lastSortedTeams.claro.length) return;
-      const A = players.filter(p => lastSortedTeams.claro.includes(p.id));
-      const B = players.filter(p => lastSortedTeams.oscuro.includes(p.id));
-      const sumA = A.reduce((s, p) => s + matchVal(p), 0).toFixed(1);
-      const sumB = B.reduce((s, p) => s + matchVal(p), 0).toFixed(1);
-
-      document.getElementById('teamsOutput').innerHTML = `
-        <div class="awards-row">
-          <div class="card" style="margin:0;">
-            <div class="card-header"><strong>⚪ EQUIPO CLARO</strong>${loggedPlayer?.es_admin ? `<span class="mono badge badge-emerald">${sumA} pts</span>` : ''}</div>
-            ${A.map(p => `<div style="padding:5px 0; border-bottom:1px solid var(--border); font-size:0.82rem;">${p.nombre} ${loggedPlayer?.es_admin ? `<span class="mono" style="float:right; color:var(--muted);">${matchVal(p).toFixed(2)}</span>`:''}</div>`).join('')}
-          </div>
-          <div class="card" style="margin:0;">
-            <div class="card-header"><strong>⚫ EQUIPO OSCURO</strong>${loggedPlayer?.es_admin ? `<span class="mono badge badge-emerald">${sumB} pts</span>` : ''}</div>
-            ${B.map(p => `<div style="padding:5px 0; border-bottom:1px solid var(--border); font-size:0.82rem;">${p.nombre} ${loggedPlayer?.es_admin ? `<span class="mono" style="float:right; color:var(--muted);">${matchVal(p).toFixed(2)}</span>`:''}</div>`).join('')}
-          </div>
-        </div>`;
-    }
-
-    function renderAdmin() {
-      if (!loggedPlayer?.es_admin) return;
-      document.getElementById('adminTableBody').innerHTML = players.map(p => `
-        <tr>
-          <td><strong>${p.nombre}</strong> ${p.es_admin?'🛡️':''}</td>
-          <td><input class="stat-input" type="number" step="0.1" value="${p.fisico}" onchange="updStat(${p.id},'fisico',this.value)"/></td>
-          <td><input class="stat-input" type="number" step="0.1" value="${p.defensa}" onchange="updStat(${p.id},'defensa',this.value)"/></td>
-          <td><input class="stat-input" type="number" step="0.1" value="${p.tecnica}" onchange="updStat(${p.id},'tecnica',this.value)"/></td>
-          <td><input class="stat-input" type="number" step="0.1" value="${p.ataque}" onchange="updStat(${p.id},'ataque',this.value)"/></td>
-          <td><input class="stat-input" type="number" step="0.1" value="${p.racha}" onchange="updStat(${p.id},'racha',this.value)"/></td>
-          <td><input class="stat-input" type="number" value="${p.goles}" onchange="updStat(${p.id},'goles',this.value)"/></td>
-          <td><input class="stat-input" type="number" value="${p.pj}" onchange="updStat(${p.id},'pj',this.value)"/></td>
-          <td><input class="stat-input" type="number" value="${p.pg}" onchange="updStat(${p.id},'pg',this.value)"/></td>
-        </tr>`).join('');
-    }
-
-    async function updStat(id, field, val) {
-      await db.from('jugadores').update({ [field]: Number(val) }).eq('id', id);
-      showToast('💾 Guardado');
-      loadAllData();
-    }
-
-    async function addGuestPlayer() {
-      const name = document.getElementById('newGuestName').value.trim();
-      if (!name) return;
-      await db.from('jugadores').insert({ nombre: name + ' (Inv)', es_invitado: true });
-      document.getElementById('newGuestName').value = '';
-      showToast('➕ Invitado agregado');
-      loadAllData();
-    }
-
-    async function publishNewMatch() {
-      if (lastSortedTeams.claro.length !== 7) { showToast('⚠️ Primero sorteá los equipos en la pestaña Equipos 7v7'); return; }
-      const fecha = document.getElementById('admFecha').value.trim() || 'Miércoles';
-      const gC = Number(document.getElementById('admGolesClaro').value);
-      const gO = Number(document.getElementById('admGolesOscuro').value);
-      const txt = document.getElementById('admGoleadoresTexto').value.trim();
-
-      await db.from('partidos').insert({
-        fecha, goles_claro: gC, goles_oscuro: gO,
-        equipo_claro: lastSortedTeams.claro, equipo_oscuro: lastSortedTeams.oscuro, goleadores_texto: txt
-      });
-
-      showToast('🚀 Partido publicado y votación abierta');
-      loadAllData();
-    }
-
-    function renderAll() { renderHome(); renderVote(); renderTeams(); renderAdmin(); }
-    loadAllData();
-  </script>
-</body>
-</html>

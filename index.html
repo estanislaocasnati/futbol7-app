@@ -65,4 +65,473 @@
     .avatar { width: 28px; height: 28px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--border); display: grid; place-items: center; font-size: 0.68rem; font-weight: 800; color: var(--emerald); flex-shrink: 0; }
 
     /* Votacion */
-    .vote-item { display: flex; justify-content: space-between;
+    .vote-item { display: flex; justify-content: space-between; align-items: center; padding: 9px 11px; background: rgba(30,41,59,0.45); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 7px; }
+    .rate-btn { width: 34px; height: 32px; border-radius: 7px; border: 1px solid var(--border); background: #090d16; color: var(--muted); font-weight: 800; cursor: pointer; }
+    .rate-btn.selected { background: var(--emerald); color: #052e16; border-color: var(--emerald); }
+    .nominee-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 7px; margin-top: 8px; }
+    .nominee-card { padding: 8px; border-radius: 9px; border: 1px solid var(--border); background: #090d16; color: var(--text); font-size: 0.78rem; font-weight: 600; cursor: pointer; text-align: center; }
+    .nominee-card.mvp-active { background: var(--amber-dim); border-color: var(--amber); color: #fde68a; }
+    .nominee-card.cry-active { background: var(--rose-dim); border-color: var(--rose); color: #fecdd3; }
+
+    .btn { padding: 10px 14px; border-radius: 9px; font-weight: 700; font-size: 0.82rem; border: none; cursor: pointer; }
+    .btn-emerald { background: var(--emerald); color: #052e16; }
+    .btn-amber { background: var(--amber); color: #451a03; }
+    .btn-ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+    .input { background: #090d16; border: 1px solid var(--border); color: var(--text); padding: 9px 11px; border-radius: 8px; font-size: 0.83rem; width: 100%; }
+
+    .section { display: none; }
+    .section.active { display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    th, td { padding: 7px 5px; text-align: left; border-bottom: 1px solid var(--border); }
+    .stat-input { width: 46px; background: #090d16; border: 1px solid var(--border); color: var(--text); padding: 4px; border-radius: 5px; text-align: center; font-weight: 700; }
+    .toast { position: fixed; bottom: 18px; right: 18px; background: #064e3b; border: 1px solid var(--emerald); color: #ecfdf5; padding: 11px 15px; border-radius: 10px; font-size: 0.8rem; font-weight: 700; display: none; z-index: 300; }
+  </style>
+</head>
+<body>
+
+  <!-- PANTALLA DE BIENVENIDA -->
+  <div class="login-screen" id="loginScreen" style="display:none;">
+    <div class="login-box">
+      <h2 style="font-size:1.05rem; font-weight:800; margin-bottom:4px;">⚽ ¿Quién sos?</h2>
+      <p style="font-size:0.75rem; color:var(--muted);">Tocá tu nombre y ya quedás logueado automáticamente en este celular.</p>
+      <div class="player-select-grid" id="loginPlayersGrid"></div>
+
+      <div id="adminPinWrapper" style="display:none; margin-top:10px;">
+        <label style="font-size:0.73rem; color:var(--amber); font-weight:700; display:block; margin-bottom:4px;">🛡️ Usuario Administrador — Ingresá PIN (9999):</label>
+        <input type="password" id="loginPinInput" class="input mono" placeholder="••••" maxlength="4" style="text-align:center;" />
+      </div>
+
+      <button class="btn btn-emerald" style="width:100%; margin-top:12px;" onclick="confirmLogin()">Entrar a la App</button>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><div class="brand-icon">⚽</div><span>Fútbol 7 — Miércoles</span></div>
+      <div class="user-pill" onclick="switchUser()">
+        <span id="currentUserName">Jugador</span>
+        <span id="currentUserRole" class="admin-tag" style="display:none;">ADMIN</span>
+        <span style="color:var(--muted);">↻</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <nav class="nav-tabs">
+      <button class="tab-btn active" onclick="openTab('home', this)">📊 Inicio</button>
+      <button class="tab-btn" onclick="openTab('vote', this)">🗳️ Votar</button>
+      <button class="tab-btn" onclick="openTab('teams', this)">⚖️ Equipos 7v7</button>
+      <button class="tab-btn admin-tab" id="adminTabBtn" style="display:none;" onclick="openTab('admin', this)">🛠️ Admin</button>
+    </nav>
+
+    <!-- 1. INICIO -->
+    <section id="sec-home" class="section active">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🏟️ Último Partido <span id="matchDateLabel" style="color:var(--muted); font-weight:500;"></span></div>
+          <div id="matchStatusBadge"></div>
+        </div>
+        <div class="scoreboard">
+          <div class="score-row">
+            <div style="font-weight:800; font-size:0.88rem;">⚪ EQUIPO CLARO</div>
+            <div class="score-num mono" id="scoreDisplay">- vs -</div>
+            <div style="font-weight:800; font-size:0.88rem;">⚫ EQUIPO OSCURO</div>
+          </div>
+          <div id="scorersDisplay" style="font-size:0.75rem; color:var(--muted); margin-top:6px;"></div>
+        </div>
+
+        <div class="quorum-grid">
+          <div class="quorum-box">
+            <div style="display:flex; justify-content:space-between; font-size:0.74rem; font-weight:700;">
+              <span>Votos Equipo Claro</span><span class="mono" id="qClaroText">0/4</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" id="qClaroBar" style="width:0%"></div></div>
+          </div>
+          <div class="quorum-box">
+            <div style="display:flex; justify-content:space-between; font-size:0.74rem; font-weight:700;">
+              <span>Votos Equipo Oscuro</span><span class="mono" id="qOscuroText">0/4</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" id="qOscuroBar" style="width:0%"></div></div>
+          </div>
+        </div>
+        <div id="matchAwardsArea"></div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="card"><div class="card-header"><div class="card-title">🏆 Win Rate (%)</div></div><div class="rank-list" id="rankWinrate"></div></div>
+        <div class="card"><div class="card-header"><div class="card-title">👟 Goleadores</div></div><div class="rank-list" id="rankGoals"></div></div>
+        <div class="card"><div class="card-header"><div class="card-title">⭐ MVP Histórico</div></div><div class="rank-list" id="rankMvp"></div></div>
+        <div class="card"><div class="card-header"><div class="card-title">😭 Llorón de Faltas</div></div><div class="rank-list" id="rankCry"></div></div>
+      </div>
+    </section>
+
+    <!-- 2. VOTAR -->
+    <section id="sec-vote" class="section">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🗳️ Votación Anónima (<span id="voterNameLabel" style="color:var(--emerald);"></span>)</div>
+          <button class="btn btn-ghost" onclick="autoFillRatings()">⚡ Autocompletar 4s</button>
+        </div>
+        <div id="voteContentArea"></div>
+      </div>
+    </section>
+
+    <!-- 3. EQUIPOS 7v7 -->
+    <section id="sec-teams" class="section">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">⚖️ Sorteo 7 vs 7 (<span id="convocadosCount">14/14</span>)</div>
+          <button class="btn btn-emerald" onclick="generateBalancedTeams()">🎲 Sortear Parejos</button>
+        </div>
+        <div class="player-select-grid" id="convocadosGrid" style="max-height:none; grid-template-columns:repeat(auto-fill, minmax(135px, 1fr));"></div>
+        <div id="teamsOutput" style="margin-top:14px;"></div>
+      </div>
+    </section>
+
+    <!-- 4. ADMIN -->
+    <section id="sec-admin" class="section">
+      <div class="card" style="border-color:rgba(245,158,11,0.4);">
+        <div class="card-header">
+          <div class="card-title" style="color:var(--amber);">📝 Publicar Partido del Miércoles</div>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:8px; margin-bottom:10px;">
+          <input type="text" id="admFecha" class="input" placeholder="Fecha (Ej: Mié 4 Nov)" />
+          <input type="number" id="admGolesClaro" class="input mono" placeholder="Goles Claro" value="6" />
+          <input type="number" id="admGolesOscuro" class="input mono" placeholder="Goles Oscuro" value="5" />
+        </div>
+        <input type="text" id="admGoleadoresTexto" class="input" placeholder="Goleadores (Ej: Lao C x2, Cote E x1...)" style="margin-bottom:10px;" />
+        <button class="btn btn-amber" onclick="publishNewMatch()">🚀 Guardar Resultado y Abrir Votación</button>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🛠️ Censo Base (1-5) y Goles</div>
+          <div style="display:flex; gap:6px;">
+            <input type="text" id="newGuestName" class="input" placeholder="Nombre Invitado..." style="width:140px;" />
+            <button class="btn btn-emerald" onclick="addGuestPlayer()">+ Invitado</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Jugador</th><th>Fís</th><th>Def</th><th>Téc</th><th>Ata</th><th>Racha</th><th>Goles</th><th>PJ</th><th>PG</th></tr></thead>
+            <tbody id="adminTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // =========================================================================
+    // 🔑 LLAVES DE SUPABASE CONFIGURADAS
+    // =========================================================================
+    const SUPABASE_URL = 'https://gkqspcytkyrzyfpxfjln.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_key_aqui_o_tu_anon_key';
+
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const QUORUM_PER_TEAM = 4;
+
+    let players = [], currentMatch = null, currentVotes = [];
+    let loggedPlayer = null, selectedLoginPlayerId = null;
+    let tempRatings = {}, selectedMvpId = null, selectedCryId = null;
+    let selectedConvocados = [], lastSortedTeams = { claro: [], oscuro: [] };
+
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.style.display = 'block';
+      setTimeout(() => t.style.display = 'none', 3000);
+    }
+    function initials(n) { return n.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2); }
+    function baseAvg(p) { return (Number(p.fisico) + Number(p.defensa) + Number(p.tecnica) + Number(p.ataque)) / 4; }
+    function matchVal(p) { return (baseAvg(p) * 0.70) + (Number(p.racha) * 0.30); }
+
+    async function loadAllData() {
+      const { data: pData, error } = await db.from('jugadores').select('*').order('nombre');
+      if (error) { showToast('⚠️ Error conectando a Supabase'); return; }
+      players = pData || [];
+      if (selectedConvocados.length === 0) selectedConvocados = players.slice(0, 14).map(p => p.id);
+
+      const { data: mData } = await db.from('partidos').select('*').order('created_at', { ascending: false }).limit(1);
+      currentMatch = mData?.[0] || null;
+
+      if (currentMatch) {
+        const { data: vData } = await db.from('votos').select('*').eq('partido_id', currentMatch.id);
+        currentVotes = vData || [];
+        lastSortedTeams = { claro: currentMatch.equipo_claro || [], oscuro: currentMatch.equipo_oscuro || [] };
+      }
+      checkSavedLogin();
+      renderAll();
+    }
+
+    function checkSavedLogin() {
+      const savedId = localStorage.getItem('f7_player_id');
+      const found = players.find(p => p.id === Number(savedId));
+      if (found) { setLoggedPlayer(found); return; }
+      openLoginModal();
+    }
+
+    function openLoginModal() {
+      document.getElementById('loginScreen').style.display = 'flex';
+      selectedLoginPlayerId = players[0]?.id || null;
+      renderLoginTiles();
+    }
+
+    function renderLoginTiles() {
+      const sel = players.find(p => p.id === selectedLoginPlayerId);
+      document.getElementById('adminPinWrapper').style.display = sel?.es_admin ? 'block' : 'none';
+      document.getElementById('loginPlayersGrid').innerHTML = players.map(p => `
+        <button class="player-chip ${p.id === selectedLoginPlayerId ? 'selected' : ''}" onclick="selectLoginTile(${p.id})">
+          <div class="avatar">${initials(p.nombre)}</div>
+          <span>${p.nombre} ${p.es_admin ? '🛡️' : ''}</span>
+        </button>
+      `).join('');
+    }
+
+    function selectLoginTile(id) {
+      selectedLoginPlayerId = id;
+      renderLoginTiles();
+    }
+
+    function confirmLogin() {
+      const player = players.find(p => p.id === selectedLoginPlayerId);
+      if (!player) return;
+      if (player.es_admin) {
+        const pin = document.getElementById('loginPinInput').value.trim();
+        if (pin !== player.pin) { showToast('❌ PIN de Admin incorrecto'); return; }
+      }
+      localStorage.setItem('f7_player_id', player.id);
+      setLoggedPlayer(player);
+      document.getElementById('loginScreen').style.display = 'none';
+      showToast(`👋 ¡Hola ${player.nombre}!`);
+      renderAll();
+    }
+
+    function setLoggedPlayer(p) {
+      loggedPlayer = p;
+      document.getElementById('currentUserName').textContent = p.nombre;
+      document.getElementById('voterNameLabel').textContent = p.nombre;
+      document.getElementById('currentUserRole').style.display = p.es_admin ? 'inline-block' : 'none';
+      document.getElementById('adminTabBtn').style.display = p.es_admin ? 'block' : 'none';
+    }
+
+    function switchUser() { localStorage.removeItem('f7_player_id'); openLoginModal(); }
+
+    function openTab(tab, btn) {
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('sec-' + tab).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    function renderHome() {
+      if (currentMatch) {
+        document.getElementById('matchDateLabel').textContent = `· ${currentMatch.fecha}`;
+        document.getElementById('scoreDisplay').textContent = `${currentMatch.goles_claro} - ${currentMatch.goles_oscuro}`;
+        document.getElementById('scorersDisplay').textContent = currentMatch.goleadores_texto ? `⚽ ${currentMatch.goleadores_texto}` : '';
+
+        const vClaro = currentVotes.filter(v => v.equipo_votante === 'claro').length;
+        const vOscuro = currentVotes.filter(v => v.equipo_votante === 'oscuro').length;
+        const unlocked = vClaro >= QUORUM_PER_TEAM && vOscuro >= QUORUM_PER_TEAM;
+
+        document.getElementById('qClaroText').textContent = `${vClaro}/${QUORUM_PER_TEAM}`;
+        document.getElementById('qOscuroText').textContent = `${vOscuro}/${QUORUM_PER_TEAM}`;
+        document.getElementById('qClaroBar').style.width = `${Math.min(100, (vClaro / QUORUM_PER_TEAM) * 100)}%`;
+        document.getElementById('qOscuroBar').style.width = `${Math.min(100, (vOscuro / QUORUM_PER_TEAM) * 100)}%`;
+        document.getElementById('matchStatusBadge').innerHTML = unlocked
+          ? `<span class="badge badge-emerald">🔓 Desbloqueado</span>`
+          : `<span class="badge badge-amber">🔒 Mín. 4 votos x lado</span>`;
+
+        if (!unlocked) {
+          document.getElementById('matchAwardsArea').innerHTML = `<div style="margin-top:12px; padding:12px; border-radius:10px; background:rgba(245,158,11,0.1); border:1px dashed var(--amber); text-align:center; font-size:0.78rem; color:#fde68a;">🔒 El MVP y el Llorón se revelan al llegar a 4 votos por equipo.</div>`;
+        } else {
+          const mC = {}, cC = {};
+          currentVotes.forEach(v => {
+            if (v.mvp_id) mC[v.mvp_id] = (mC[v.mvp_id] || 0) + 1;
+            if (v.lloron_id) cC[v.lloron_id] = (cC[v.lloron_id] || 0) + 1;
+          });
+          const topM = Object.keys(mC).sort((a,b) => mC[b] - mC[a])[0];
+          const topC = Object.keys(cC).sort((a,b) => cC[b] - cC[a])[0];
+          const pM = players.find(p => p.id === Number(topM));
+          const pC = players.find(p => p.id === Number(topC));
+          document.getElementById('matchAwardsArea').innerHTML = `
+            <div class="awards-row">
+              <div class="award-card"><div>⭐</div><div><div style="font-size:0.68rem; color:var(--muted);">MVP DE LA FECHA</div><div style="font-weight:800;">${pM ? pM.nombre : '-'}</div></div></div>
+              <div class="award-card"><div>😭</div><div><div style="font-size:0.68rem; color:var(--muted);">LLORÓN DE FALTAS</div><div style="font-weight:800;">${pC ? pC.nombre : '-'}</div></div></div>
+            </div>`;
+        }
+      }
+
+      const renderList = (arr, valFn) => arr.slice(0, 6).map((p, i) => `
+        <div class="rank-item">
+          <div style="display:flex; align-items:center; gap:8px;"><span class="mono" style="color:var(--muted);">${i+1}.</span><div class="avatar">${initials(p.nombre)}</div><strong>${p.nombre}</strong></div>
+          <span class="mono" style="font-weight:700; color:var(--emerald);">${valFn(p)}</span>
+        </div>`).join('');
+
+      document.getElementById('rankWinrate').innerHTML = renderList([...players].sort((a,b) => (b.pj?b.pg/b.pj:0) - (a.pj?a.pg/a.pj:0)), p => `${p.pj ? Math.round((p.pg/p.pj)*100) : 0}% (${p.pg}/${p.pj})`);
+      document.getElementById('rankGoals').innerHTML = renderList([...players].sort((a,b) => b.goles - a.goles), p => `${p.goles} ⚽`);
+      document.getElementById('rankMvp').innerHTML = renderList([...players].sort((a,b) => b.mvps - a.mvps), p => `${p.mvps} ⭐`);
+      document.getElementById('rankCry').innerHTML = renderList([...players].sort((a,b) => b.lloron - a.lloron), p => `${p.lloron} 😭`);
+    }
+
+    function renderVote() {
+      const area = document.getElementById('voteContentArea');
+      if (!currentMatch || !loggedPlayer) { area.innerHTML = `<p style="color:var(--muted); font-size:0.82rem;">No hay partido activo para votar.</p>`; return; }
+
+      const already = currentVotes.find(v => v.votante_id === loggedPlayer.id);
+      if (already) { area.innerHTML = `<div style="padding:14px; background:var(--emerald-dim); border-radius:10px; color:#6ee7b7; font-weight:700;">✅ Ya enviaste tu voto anónimo en esta fecha.</div>`; return; }
+
+      const matchIds = [...(currentMatch.equipo_claro || []), ...(currentMatch.equipo_oscuro || [])];
+      const matchPlayers = players.filter(p => matchIds.includes(p.id) && p.id !== loggedPlayer.id);
+
+      area.innerHTML = `
+        <div style="margin-bottom:14px;">
+          ${matchPlayers.map(p => `
+            <div class="vote-item">
+              <strong>${p.nombre}</strong>
+              <div>${[1,2,3,4,5].map(n => `<button class="rate-btn ${tempRatings[p.id]===n?'selected':''}" onclick="setRate(${p.id},${n})">${n}</button>`).join(' ')}</div>
+            </div>`).join('')}
+        </div>
+        <div style="margin:12px 0;"><strong style="font-size:0.82rem; color:var(--amber);">⭐ Elegí al MVP de la noche:</strong>
+          <div class="nominee-grid">${matchPlayers.map(p => `<div class="nominee-card ${selectedMvpId===p.id?'mvp-active':''}" onclick="selectedMvpId=${p.id};renderVote()">${p.nombre}</div>`).join('')}</div>
+        </div>
+        <div style="margin:14px 0;"><strong style="font-size:0.82rem; color:var(--rose);">😭 Elegí al Llorón de faltas:</strong>
+          <div class="nominee-grid">${matchPlayers.map(p => `<div class="nominee-card ${selectedCryId===p.id?'cry-active':''}" onclick="selectedCryId=${p.id};renderVote()">${p.nombre}</div>`).join('')}</div>
+        </div>
+        <button class="btn btn-emerald" style="width:100%; margin-top:10px;" onclick="submitVote()">🔒 Enviar Voto Anónimo</button>`;
+    }
+
+    function setRate(pid, val) { tempRatings[pid] = val; renderVote(); }
+    function autoFillRatings() { players.forEach(p => { if (p.id !== loggedPlayer?.id) tempRatings[p.id] = 4; }); renderVote(); }
+
+    async function submitVote() {
+      if (!selectedMvpId || !selectedCryId) { showToast('⚠️ Elegí MVP y Llorón antes de enviar'); return; }
+      const isClaro = (currentMatch.equipo_claro || []).includes(loggedPlayer.id);
+      const equipoVotante = isClaro ? 'claro' : 'oscuro';
+
+      const { error } = await db.from('votos').insert({
+        partido_id: currentMatch.id, votante_id: loggedPlayer.id,
+        equipo_votante: equipoVotante, mvp_id: selectedMvpId, lloron_id: selectedCryId, puntajes: tempRatings
+      });
+      if (error) { showToast('❌ Error o voto duplicado'); return; }
+
+      const mvpP = players.find(p => p.id === selectedMvpId);
+      const cryP = players.find(p => p.id === selectedCryId);
+      if (mvpP) await db.from('jugadores').update({ mvps: mvpP.mvps + 1 }).eq('id', mvpP.id);
+      if (cryP) await db.from('jugadores').update({ lloron: cryP.lloron + 1 }).eq('id', cryP.id);
+
+      showToast('✅ ¡Voto guardado!');
+      await loadAllData();
+    }
+
+    function renderTeams() {
+      document.getElementById('convocadosCount').textContent = `${selectedConvocados.length}/14`;
+      document.getElementById('convocadosGrid').innerHTML = players.map(p => {
+        const sel = selectedConvocados.includes(p.id);
+        return `<button class="player-chip ${sel?'selected':''}" onclick="toggleConvocado(${p.id})">
+          <div class="avatar">${initials(p.nombre)}</div>
+          <div><div>${p.nombre}</div>${loggedPlayer?.es_admin ? `<div class="mono" style="font-size:0.68rem; color:var(--amber);"> Val: ${matchVal(p).toFixed(2)}</div>` : ''}</div>
+        </button>`;
+      }).join('');
+      renderSortedOutput();
+    }
+
+    function toggleConvocado(id) {
+      if (selectedConvocados.includes(id)) selectedConvocados = selectedConvocados.filter(x => x !== id);
+      else if (selectedConvocados.length < 14) selectedConvocados.push(id);
+      renderTeams();
+    }
+
+    function generateBalancedTeams() {
+      if (selectedConvocados.length !== 14) { showToast('⚠️ Seleccioná exactamente 14 jugadores'); return; }
+      const pool = players.filter(p => selectedConvocados.includes(p.id));
+      let bestDiff = 999, bestSplit = null;
+
+      for (let i = 0; i < 250; i++) {
+        const shuf = [...pool].sort(() => Math.random() - 0.5);
+        const A = shuf.slice(0, 7), B = shuf.slice(7, 14);
+        const sumA = A.reduce((s, p) => s + matchVal(p), 0);
+        const sumB = B.reduce((s, p) => s + matchVal(p), 0);
+        const diff = Math.abs(sumA - sumB);
+        if (diff < bestDiff) { bestDiff = diff; bestSplit = { claro: A.map(p=>p.id), oscuro: B.map(p=>p.id) }; }
+      }
+      lastSortedTeams = bestSplit;
+      renderSortedOutput();
+      showToast('⚖️ Equipos parejos generados');
+    }
+
+    function renderSortedOutput() {
+      if (!lastSortedTeams.claro.length) return;
+      const A = players.filter(p => lastSortedTeams.claro.includes(p.id));
+      const B = players.filter(p => lastSortedTeams.oscuro.includes(p.id));
+      const sumA = A.reduce((s, p) => s + matchVal(p), 0).toFixed(1);
+      const sumB = B.reduce((s, p) => s + matchVal(p), 0).toFixed(1);
+
+      document.getElementById('teamsOutput').innerHTML = `
+        <div class="awards-row">
+          <div class="card" style="margin:0;">
+            <div class="card-header"><strong>⚪ EQUIPO CLARO</strong>${loggedPlayer?.es_admin ? `<span class="mono badge badge-emerald">${sumA} pts</span>` : ''}</div>
+            ${A.map(p => `<div style="padding:5px 0; border-bottom:1px solid var(--border); font-size:0.82rem;">${p.nombre} ${loggedPlayer?.es_admin ? `<span class="mono" style="float:right; color:var(--muted);">${matchVal(p).toFixed(2)}</span>`:''}</div>`).join('')}
+          </div>
+          <div class="card" style="margin:0;">
+            <div class="card-header"><strong>⚫ EQUIPO OSCURO</strong>${loggedPlayer?.es_admin ? `<span class="mono badge badge-emerald">${sumB} pts</span>` : ''}</div>
+            ${B.map(p => `<div style="padding:5px 0; border-bottom:1px solid var(--border); font-size:0.82rem;">${p.nombre} ${loggedPlayer?.es_admin ? `<span class="mono" style="float:right; color:var(--muted);">${matchVal(p).toFixed(2)}</span>`:''}</div>`).join('')}
+          </div>
+        </div>`;
+    }
+
+    function renderAdmin() {
+      if (!loggedPlayer?.es_admin) return;
+      document.getElementById('adminTableBody').innerHTML = players.map(p => `
+        <tr>
+          <td><strong>${p.nombre}</strong> ${p.es_admin?'🛡️':''}</td>
+          <td><input class="stat-input" type="number" step="0.1" value="${p.fisico}" onchange="updStat(${p.id},'fisico',this.value)"/></td>
+          <td><input class="stat-input" type="number" step="0.1" value="${p.defensa}" onchange="updStat(${p.id},'defensa',this.value)"/></td>
+          <td><input class="stat-input" type="number" step="0.1" value="${p.tecnica}" onchange="updStat(${p.id},'tecnica',this.value)"/></td>
+          <td><input class="stat-input" type="number" step="0.1" value="${p.ataque}" onchange="updStat(${p.id},'ataque',this.value)"/></td>
+          <td><input class="stat-input" type="number" step="0.1" value="${p.racha}" onchange="updStat(${p.id},'racha',this.value)"/></td>
+          <td><input class="stat-input" type="number" value="${p.goles}" onchange="updStat(${p.id},'goles',this.value)"/></td>
+          <td><input class="stat-input" type="number" value="${p.pj}" onchange="updStat(${p.id},'pj',this.value)"/></td>
+          <td><input class="stat-input" type="number" value="${p.pg}" onchange="updStat(${p.id},'pg',this.value)"/></td>
+        </tr>`).join('');
+    }
+
+    async function updStat(id, field, val) {
+      await db.from('jugadores').update({ [field]: Number(val) }).eq('id', id);
+      showToast('💾 Guardado');
+      loadAllData();
+    }
+
+    async function addGuestPlayer() {
+      const name = document.getElementById('newGuestName').value.trim();
+      if (!name) return;
+      await db.from('jugadores').insert({ nombre: name + ' (Inv)', es_invitado: true });
+      document.getElementById('newGuestName').value = '';
+      showToast('➕ Invitado agregado');
+      loadAllData();
+    }
+
+    async function publishNewMatch() {
+      if (lastSortedTeams.claro.length !== 7) { showToast('⚠️ Primero sorteá los equipos en la pestaña Equipos 7v7'); return; }
+      const fecha = document.getElementById('admFecha').value.trim() || 'Miércoles';
+      const gC = Number(document.getElementById('admGolesClaro').value);
+      const gO = Number(document.getElementById('admGolesOscuro').value);
+      const txt = document.getElementById('admGoleadoresTexto').value.trim();
+
+      await db.from('partidos').insert({
+        fecha, goles_claro: gC, goles_oscuro: gO,
+        equipo_claro: lastSortedTeams.claro, equipo_oscuro: lastSortedTeams.oscuro, goleadores_texto: txt
+      });
+
+      showToast('🚀 Partido publicado y votación abierta');
+      loadAllData();
+    }
+
+    function renderAll() { renderHome(); renderVote(); renderTeams(); renderAdmin(); }
+    loadAllData();
+  </script>
+</body>
+</html>

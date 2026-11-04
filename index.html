@@ -266,4 +266,459 @@
   <script>
     function openTab(tab, btn) {
       document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      const target = document.getElementById('sec-' + tab);
+      if (target) target.classList.add('active');
+      if (btn) btn.classList.add('active');
+    }
+
+    function openPwaModal() { document.getElementById('pwaModal').style.display = 'flex'; }
+    function closePwaModal() { document.getElementById('pwaModal').style.display = 'none'; }
+
+    const SUPABASE_URL = 'https://gkqspcytkyrzyfpxfjln.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_SPldvSwxsJUT4dwBQadDbQ_rs3aspRc';
+
+    let db = null;
+    if (window.supabase) {
+      db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: false },
+        db: { schema: 'public' }
+      });
+    }
+
+    const QUORUM_PER_TEAM = 4;
+    let players = [], currentMatch = null, currentVotes = [];
+    let loggedPlayer = null, selectedLoginPlayerId = null;
+    let tempRatings = {}, selectedMvpId = null, selectedCryId = null;
+    let selectedConvocados = [], activeTeamsState = { claro: [], oscuro: [] };
+
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      if (!t) return;
+      t.textContent = msg; t.style.display = 'block';
+      setTimeout(() => t.style.display = 'none', 3000);
+    }
+    function initials(n) { return (n || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2); }
+    function baseAvg(p) { return (Number(p.fisico) + Number(p.defensa) + Number(p.tecnica) + Number(p.ataque)) / 4; }
+    function matchVal(p) { return (baseAvg(p) * 0.70) + (Number(p.racha) * 0.30); }
+
+    async function loadAllData() {
+      if (!db) { showToast('⚠️ Error cargando Supabase'); return; }
+      
+      const { data: pData, error } = await db.from('jugadores').select('*').order('nombre');
+      if (error) { showToast('⚠️ Error conectando: ' + error.message); return; }
+      
+      players = pData || [];
+      if (selectedConvocados.length === 0 && players.length > 0) {
+        selectedConvocados = players.slice(0, 14).map(p => p.id);
+      }
+
+      const { data: mData } = await db.from('partidos').select('*').order('created_at', { ascending: false }).limit(1);
+      currentMatch = mData?.[0] || null;
+
+      if (currentMatch) {
+        const { data: vData } = await db.from('votos').select('*').eq('partido_id', currentMatch.id);
+        currentVotes = vData || [];
+      }
+
+      const { data: teamData } = await db.from('configuracion').select('*').eq('clave', 'equipos_activos').single();
+      if (teamData && teamData.valor) {
+        activeTeamsState = teamData.valor;
+      }
+
+      checkSavedLogin();
+      renderAll();
+    }
+
+    function checkSavedLogin() {
+      const savedId = localStorage.getItem('f7_player_id');
+      const found = players.find(p => p.id === Number(savedId));
+      if (found) { 
+        setLoggedPlayer(found); 
+        return; 
+      }
+      openLoginModal();
+    }
+
+    function openLoginModal() {
+      const scr = document.getElementById('loginScreen');
+      if (scr) scr.style.display = 'flex';
+      selectedLoginPlayerId = players[0]?.id || null;
+      renderLoginTiles(players);
+    }
+
+    function renderLoginTiles(list) {
+      const grid = document.getElementById('loginPlayersGrid');
+      if (grid) {
+        grid.innerHTML = list.map(p => `
+          <button class="player-chip ${p.id === selectedLoginPlayerId ? 'selected' : ''}" onclick="selectLoginTile(${p.id})">
+            <div class="avatar">${initials(p.nombre)}</div>
+            <span>${p.nombre} ${p.es_admin ? '🛡️' : ''}</span>
+          </button>
+        `).join('');
+      }
+    }
+
+    function selectLoginTile(id) {
+      selectedLoginPlayerId = id;
+      renderLoginTiles(players);
+    }
+
+    async function confirmPlayerLogin() {
+      const player = players.find(p => p.id === selectedLoginPlayerId);
+      if (!player) return;
+      
+      const pinTyped = document.getElementById('playerPinInput').value.trim();
+      if (player.es_admin) {
+        if (pinTyped !== '9999' && pinTyped !== player.pin) {
+          showToast('❌ PIN de Administrador incorrecto');
+          return;
+        }
+      }
+
+      localStorage.setItem('f7_player_id', player.id);
+      setLoggedPlayer(player);
+      const scr = document.getElementById('loginScreen');
+      if (scr) scr.style.display = 'none';
+      showToast(`👋 ¡Hola ${player.nombre}!`);
+      renderAll();
+    }
+
+    function setLoggedPlayer(p) {
+      loggedPlayer = p;
+      const uname = document.getElementById('currentUserName');
+      const vname = document.getElementById('voterNameLabel');
+      const urole = document.getElementById('currentUserRole');
+      const adtab = document.getElementById('adminTabBtn');
+      const sorteoBtn = document.getElementById('sorteoBtn');
+      const nonAdminNotice = document.getElementById('nonAdminNotice');
+
+      if (uname) uname.textContent = p.nombre;
+      if (vname) vname.textContent = p.nombre;
+      if (urole) urole.style.display = p.es_admin ? 'inline-block' : 'none';
+      if (adtab) adtab.style.display = p.es_admin ? 'block' : 'none';
+      
+      if (sorteoBtn) sorteoBtn.style.display = p.es_admin ? 'inline-flex' : 'none';
+      if (nonAdminNotice) nonAdminNotice.style.display = p.es_admin ? 'none' : 'block';
+    }
+
+    function switchUser() { 
+      localStorage.removeItem('f7_player_id'); 
+      openLoginModal(); 
+    }
+
+    function renderHome() {
+      const todayDisp = document.getElementById('todayMatchDisplay');
+      if (activeTeamsState.claro.length > 0 && activeTeamsState.oscuro.length > 0) {
+        const A = players.filter(p => activeTeamsState.claro.includes(p.id)).map(p => `• ${p.nombre}`).join('<br>');
+        const B = players.filter(p => activeTeamsState.oscuro.includes(p.id)).map(p => `• ${p.nombre}`).join('<br>');
+        
+        todayDisp.innerHTML = `
+          <div style="font-weight:800; text-align:center; margin-bottom:8px; color:var(--emerald);">⚽ EQUIPOS PARA EL MIÉRCOLES ⚽</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px;">
+            <div><strong style="color:#fff;">⚪ EQUIPO CLARO</strong><br>${A}</div>
+            <div><strong style="color:#fff;">⚫ EQUIPO OSCURO</strong><br>${B}</div>
+          </div>
+          <div style="text-align:center; margin-top:10px; font-weight:700; color:var(--amber);">¡A dejar todo en la cancha! 🔥</div>
+        `;
+      } else {
+        todayDisp.innerHTML = `<span style="color:var(--muted);">Aún no se han sortearon los equipos para este miércoles.</span>`;
+      }
+
+      if (currentMatch) {
+        const mDate = document.getElementById('matchDateLabel');
+        const sDisp = document.getElementById('scoreDisplay');
+        const scDisp = document.getElementById('scorersDisplay');
+        if (mDate) mDate.textContent = `· ${currentMatch.fecha}`;
+        if (sDisp) sDisp.textContent = `${currentMatch.goles_claro} - ${currentMatch.goles_oscuro}`;
+        if (scDisp) scDisp.textContent = currentMatch.goleadores_texto ? `⚽ ${currentMatch.goleadores_texto}` : '';
+
+        const vClaro = currentVotes.filter(v => v.equipo_votante === 'claro').length;
+        const vOscuro = currentVotes.filter(v => v.equipo_votante === 'oscuro').length;
+        const unlocked = vClaro >= QUORUM_PER_TEAM && vOscuro >= QUORUM_PER_TEAM;
+
+        const qCText = document.getElementById('qClaroText');
+        const qOText = document.getElementById('qOscuroText');
+        const qCBar = document.getElementById('qClaroBar');
+        const qOBar = document.getElementById('qOscuroBar');
+        const mBadge = document.getElementById('matchStatusBadge');
+
+        if (qCText) qCText.textContent = `${vClaro}/${QUORUM_PER_TEAM}`;
+        if (qOText) qOText.textContent = `${vOscuro}/${QUORUM_PER_TEAM}`;
+        if (qCBar) qCBar.style.width = `${Math.min(100, (vClaro / QUORUM_PER_TEAM) * 100)}%`;
+        if (qOBar) qOBar.style.width = `${Math.min(100, (vOscuro / QUORUM_PER_TEAM) * 100)}%`;
+        if (mBadge) {
+          mBadge.innerHTML = unlocked
+            ? `<span class="badge badge-emerald">🔓 Desbloqueado</span>`
+            : `<span class="badge badge-amber">🔒 Mín. 4 votos x lado</span>`;
+        }
+
+        const mAwards = document.getElementById('matchAwardsArea');
+        if (mAwards) {
+          if (!unlocked) {
+            mAwards.innerHTML = `<div style="margin-top:12px; padding:12px; border-radius:10px; background:rgba(245,158,11,0.1); border:1px dashed var(--amber); text-align:center; font-size:0.78rem; color:#fde68a;">🔒 El MVP y el Llorón se revelan al llegar a 4 votos por equipo.</div>`;
+          } else {
+            const mC = {}, cC = {};
+            currentVotes.forEach(v => {
+              if (v.mvp_id) mC[v.mvp_id] = (mC[v.mvp_id] || 0) + 1;
+              if (v.lloron_id) cC[v.lloron_id] = (cC[v.lloron_id] || 0) + 1;
+            });
+            const topM = Object.keys(mC).sort((a,b) => mC[b] - mC[a])[0];
+            const topC = Object.keys(cC).sort((a,b) => cC[b] - cC[a])[0];
+            const pM = players.find(p => p.id === Number(topM));
+            const pC = players.find(p => p.id === Number(topC));
+            mAwards.innerHTML = `
+              <div class="awards-row">
+                <div class="award-card"><div>⭐</div><div><div style="font-size:0.68rem; color:var(--muted);">MVP DE LA FECHA</div><div style="font-weight:800;">${pM ? pM.nombre : '-'}</div></div></div>
+                <div class="award-card"><div>😭</div><div><div style="font-size:0.68rem; color:var(--muted);">LLORÓN DE FALTAS</div><div style="font-weight:800;">${pC ? pC.nombre : '-'}</div></div></div>
+              </div>`;
+          }
+        }
+      }
+
+      const renderList = (arr, valFn) => arr.slice(0, 6).map((p, i) => `
+        <div class="rank-item">
+          <div style="display:flex; align-items:center; gap:8px;"><span class="mono" style="color:var(--muted);">${i+1}.</span><div class="avatar">${initials(p.nombre)}</div><strong>${p.nombre}</strong></div>
+          <span class="mono" style="font-weight:700; color:var(--emerald);">${valFn(p)}</span>
+        </div>`).join('');
+
+      const rW = document.getElementById('rankWinrate');
+      const rG = document.getElementById('rankGoals');
+      const rM = document.getElementById('rankMvp');
+      const rC = document.getElementById('rankCry');
+
+      if (rW) rW.innerHTML = renderList([...players].sort((a,b) => (b.pj?b.pg/b.pj:0) - (a.pj?a.pg/a.pj:0)), p => `${p.pj ? Math.round((p.pg/p.pj)*100) : 0}% (${p.pg}/${p.pj})`);
+      if (rG) rG.innerHTML = renderList([...players].sort((a,b) => b.goles - a.goles), p => `${p.goles} ⚽`);
+      if (rM) rM.innerHTML = renderList([...players].sort((a,b) => b.mvps - a.mvps), p => `${p.mvps} ⭐`);
+      if (rC) rC.innerHTML = renderList([...players].sort((a,b) => b.lloron - a.lloron), p => `${p.lloron} 😭`);
+    }
+
+    function renderVote() {
+      const area = document.getElementById('voteContentArea');
+      if (!area) return;
+      if (!currentMatch || !loggedPlayer) { area.innerHTML = `<p style="color:var(--muted); font-size:0.82rem;">No hay partido activo para votar.</p>`; return; }
+
+      const already = currentVotes.find(v => v.votante_id === loggedPlayer.id);
+      if (already) { area.innerHTML = `<div style="padding:14px; background:var(--emerald-dim); border-radius:10px; color:#6ee7b7; font-weight:700;">✅ Ya enviaste tu voto anónimo en esta fecha.</div>`; return; }
+
+      const matchIds = [...(currentMatch.equipo_claro || []), ...(currentMatch.equipo_oscuro || [])];
+      const matchPlayers = players.filter(p => matchIds.includes(p.id) && p.id !== loggedPlayer.id);
+
+      area.innerHTML = `
+        <div style="margin-bottom:14px;">
+          ${matchPlayers.map(p => `
+            <div class="vote-item">
+              <strong>${p.nombre}</strong>
+              <div>${[1,2,3,4,5].map(n => `<button class="rate-btn ${tempRatings[p.id]===n?'selected':''}" onclick="setRate(${p.id},${n})">${n}</button>`).join(' ')}</div>
+            </div>`).join('')}
+        </div>
+        <div style="margin:12px 0;"><strong style="font-size:0.82rem; color:var(--amber);">⭐ Elegí al MVP de la noche:</strong>
+          <div class="nominee-grid">${matchPlayers.map(p => `<div class="nominee-card ${selectedMvpId===p.id?'mvp-active':''}" onclick="selectedMvpId=${p.id};renderVote()">${p.nombre}</div>`).join('')}</div>
+        </div>
+        <div style="margin:14px 0;"><strong style="font-size:0.82rem; color:var(--rose);">😭 Elegí al Llorón de faltas:</strong>
+          <div class="nominee-grid">${matchPlayers.map(p => `<div class="nominee-card ${selectedCryId===p.id?'cry-active':''}" onclick="selectedCryId=${p.id};renderVote()">${p.nombre}</div>`).join('')}</div>
+        </div>
+        <button class="btn btn-emerald" style="width:100%; margin-top:10px;" onclick="submitVote()">🔒 Enviar Voto Anónimo</button>`;
+    }
+
+    function setRate(pid, val) { tempRatings[pid] = val; renderVote(); }
+    function autoFillRatings() { players.forEach(p => { if (p.id !== loggedPlayer?.id) tempRatings[p.id] = 4; }); renderVote(); }
+
+    async function submitVote() {
+      if (!selectedMvpId || !selectedCryId) { showToast('⚠️ Elegí MVP y Llorón antes de enviar'); return; }
+      const isClaro = (currentMatch.equipo_claro || []).includes(loggedPlayer.id);
+      const equipoVotante = isClaro ? 'claro' : 'oscuro';
+
+      const { error } = await db.from('votos').insert({
+        partido_id: currentMatch.id, votante_id: loggedPlayer.id,
+        equipo_votante: equipoVotante, mvp_id: selectedMvpId, lloron_id: selectedCryId, puntajes: tempRatings
+      });
+      if (error) { showToast('❌ Error o voto duplicado'); return; }
+
+      const mvpP = players.find(p => p.id === selectedMvpId);
+      const cryP = players.find(p => p.id === selectedCryId);
+      if (mvpP) await db.from('jugadores').update({ mvps: mvpP.mvps + 1 }).eq('id', mvpP.id);
+      if (cryP) await db.from('jugadores').update({ lloron: cryP.lloron + 1 }).eq('id', cryP.id);
+
+      showToast('✅ ¡Voto guardado!');
+      await loadAllData();
+    }
+
+    function renderTeams() {
+      const cCount = document.getElementById('convocadosCount');
+      const cGrid = document.getElementById('convocadosGrid');
+      if (cCount) cCount.textContent = `${selectedConvocados.length}/14`;
+      if (cGrid) {
+        cGrid.innerHTML = players.map(p => {
+          const sel = selectedConvocados.includes(p.id);
+          const clickAction = loggedPlayer?.es_admin ? `onclick="toggleConvocado(${p.id})"` : '';
+          return `<button class="player-chip ${sel?'selected':''}" ${clickAction} style="${!loggedPlayer?.es_admin ? 'opacity:0.85; cursor:default;' : ''}">
+            <div class="avatar">${initials(p.nombre)}</div>
+            <div><div>${p.nombre}</div>${loggedPlayer?.es_admin ? `<div class="mono" style="font-size:0.68rem; color:var(--amber);"> Val: ${matchVal(p).toFixed(2)}</div>` : ''}</div>
+          </button>`;
+        }).join('');
+      }
+      renderSortedOutput();
+    }
+
+    function toggleConvocado(id) {
+      if (!loggedPlayer?.es_admin) return;
+      if (selectedConvocados.includes(id)) selectedConvocados = selectedConvocados.filter(x => x !== id);
+      else if (selectedConvocados.length < 14) selectedConvocados.push(id);
+      renderTeams();
+    }
+
+    async function generateBalancedTeams() {
+      if (!loggedPlayer?.es_admin) return;
+      if (selectedConvocados.length !== 14) { showToast('⚠️ Seleccioná exactamente 14 jugadores'); return; }
+      const pool = players.filter(p => selectedConvocados.includes(p.id));
+      let bestDiff = 999, bestSplit = null;
+
+      for (let i = 0; i < 250; i++) {
+        const shuf = [...pool].sort(() => Math.random() - 0.5);
+        const A = shuf.slice(0, 7), B = shuf.slice(7, 14);
+        const sumA = A.reduce((s, p) => s + matchVal(p), 0);
+        const sumB = B.reduce((s, p) => s + matchVal(p), 0);
+        const diff = Math.abs(sumA - sumB);
+        if (diff < bestDiff) { bestDiff = diff; bestSplit = { claro: A.map(p=>p.id), oscuro: B.map(p=>p.id) }; }
+      }
+
+      activeTeamsState = bestSplit;
+      
+      await db.from('configuracion').upsert({ clave: 'equipos_activos', valor: bestSplit });
+
+      renderSortedOutput();
+      renderHome();
+      showToast('⚖️ Equipos parejos generados y guardados');
+    }
+
+    function renderSortedOutput() {
+      const tOut = document.getElementById('teamsOutput');
+      if (!tOut || !activeTeamsState.claro.length) return;
+      const A = players.filter(p => activeTeamsState.claro.includes(p.id));
+      const B = players.filter(p => activeTeamsState.oscuro.includes(p.id));
+      const sumA = A.reduce((s, p) => s + matchVal(p), 0).toFixed(1);
+      const sumB = B.reduce((s, p) => s + matchVal(p), 0).toFixed(1);
+
+      tOut.innerHTML = `
+        <div class="awards-row">
+          <div class="card" style="margin:0;">
+            <div class="card-header"><strong>⚪ EQUIPO CLARO</strong>${loggedPlayer?.es_admin ? `<span class="mono badge badge-emerald">${sumA} pts</span>` : ''}</div>
+            ${A.map(p => `<div style="padding:5px 0; border-bottom:1px solid var(--border); font-size:0.82rem;">${p.nombre}</div>`).join('')}
+          </div>
+          <div class="card" style="margin:0;">
+            <div class="card-header"><strong>⚫ EQUIPO OSCURO</strong>${loggedPlayer?.es_admin ? `<span class="mono badge badge-emerald">${sumB} pts</span>` : ''}</div>
+            ${B.map(p => `<div style="padding:5px 0; border-bottom:1px solid var(--border); font-size:0.82rem;">${p.nombre}</div>`).join('')}
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:12px;">
+          ${loggedPlayer?.es_admin ? `<button class="btn btn-amber" onclick="generateBalancedTeams()">🔄 Volver a Sortear</button>` : ''}
+          <button class="btn btn-whatsapp" onclick="shareOnWhatsApp()" style="${!loggedPlayer?.es_admin ? 'grid-column: span 2;' : ''}">📤 Enviar WhatsApp</button>
+        </div>`;
+    }
+
+    function shareOnWhatsApp() {
+      const A = players.filter(p => activeTeamsState.claro.includes(p.id)).map(p => `• ${p.nombre}`).join('\n');
+      const B = players.filter(p => activeTeamsState.oscuro.includes(p.id)).map(p => `• ${p.nombre}`).join('\n');
+      
+      const text = `⚽ *EQUIPOS PARA EL MIÉRCOLES* ⚽\n\n` +
+                   `⚪ *EQUIPO CLARO*\n${A}\n\n` +
+                   `⚫ *EQUIPO OSCURO*\n${B}\n\n` +
+                   `¡A dejar todo en la cancha! 🔥`;
+
+      const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+      window.open(url, '_blank');
+    }
+
+    function renderAdmin() {
+      if (!loggedPlayer?.es_admin) return;
+      const tBody = document.getElementById('adminTableBody');
+      if (tBody) {
+        tBody.innerHTML = players.map(p => `
+          <tr>
+            <td><strong>${p.nombre}</strong> ${p.es_admin?'🛡️':''}</td>
+            <td><input class="stat-input" type="number" step="0.1" value="${p.fisico}" onchange="updStat(${p.id},'fisico',this.value)"/></td>
+            <td><input class="stat-input" type="number" step="0.1" value="${p.defensa}" onchange="updStat(${p.id},'defensa',this.value)"/></td>
+            <td><input class="stat-input" type="number" step="0.1" value="${p.tecnica}" onchange="updStat(${p.id},'tecnica',this.value)"/></td>
+            <td><input class="stat-input" type="number" step="0.1" value="${p.ataque}" onchange="updStat(${p.id},'ataque',this.value)"/></td>
+            <td><input class="stat-input" type="number" step="0.1" value="${p.racha}" onchange="updStat(${p.id},'racha',this.value)"/></td>
+            <td><input class="stat-input" type="number" value="${p.goles}" onchange="updStat(${p.id},'goles',this.value)"/></td>
+            <td><input class="stat-input" type="number" value="${p.pj}" onchange="updStat(${p.id},'pj',this.value)"/></td>
+            <td><input class="stat-input" type="number" value="${p.pg}" onchange="updStat(${p.id},'pg',this.value)"/></td>
+          </tr>`).join('');
+      }
+    }
+
+    async function updStat(id, field, val) {
+      await db.from('jugadores').update({ [field]: Number(val) }).eq('id', id);
+      showToast('💾 Guardado');
+      loadAllData();
+    }
+
+    async function addGuestPlayer() {
+      const nameIn = document.getElementById('newGuestName');
+      const name = nameIn ? nameIn.value.trim() : '';
+      if (!name) return;
+      await db.from('jugadores').insert({ nombre: name + ' (Inv)', es_invitado: true });
+      if (nameIn) nameIn.value = '';
+      showToast('➕ Invitado agregado');
+      loadAllData();
+    }
+
+    async function publishNewMatch() {
+      if (!loggedPlayer?.es_admin) return;
+      if (activeTeamsState.claro.length !== 7 || activeTeamsState.oscuro.length !== 7) { 
+        showToast('⚠️ Primero sorteá los equipos en la pestaña Equipos 7v7'); 
+        return; 
+      }
+
+      const fecha = document.getElementById('admFecha').value.trim() || 'Miércoles';
+      const gC = Number(document.getElementById('admGolesClaro').value);
+      const gO = Number(document.getElementById('admGolesOscuro').value);
+      const txt = document.getElementById('admGoleadoresTexto').value.trim();
+
+      const matchPlayerIds = [...activeTeamsState.claro, ...activeTeamsState.oscuro];
+
+      for (let pId of matchPlayerIds) {
+        const pObj = players.find(x => x.id === pId);
+        if (pObj) {
+          const nuevoPj = Number(pObj.pj || 0) + 1;
+          let nuevoPg = Number(pObj.pg || 0);
+          const esClaro = activeTeamsState.claro.includes(pId);
+          const esOscuro = activeTeamsState.oscuro.includes(pId);
+
+          if ((esClaro && gC > gO) || (esOscuro && gO > gC)) {
+            nuevoPg += 1;
+          }
+
+          await db.from('jugadores').update({
+            pj: nuevoPj,
+            pg: nuevoPg
+          }).eq('id', pId);
+        }
+      }
+
+      await db.from('partidos').insert({
+        fecha, 
+        goles_claro: gC, 
+        goles_oscuro: gO,
+        equipo_claro: activeTeamsState.claro, 
+        equipo_oscuro: activeTeamsState.oscuro, 
+        goleadores_texto: txt
+      });
+
+      showToast('🚀 Partido publicado y estadísticas actualizadas');
+      loadAllData();
+      openTab('home', document.querySelector('.tab-btn'));
+    }
+
+    function renderAll() { renderHome(); renderVote(); renderTeams(); renderAdmin(); }
+    
+    window.addEventListener('DOMContentLoaded', () => {
+      loadAllData();
+    });
+  </script>
+</body>
+</html>

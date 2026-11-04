@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Fútbol 7 — Miércoles</title>
+  <!-- Favicon de pelota de fútbol -->
+  <link rel="icon" href="https://images.emojiterra.com/google/android-11/512px/26bd.png" />
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#090d16" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -293,6 +295,7 @@
     let loggedPlayer = null, selectedLoginPlayerId = null;
     let tempRatings = {}, selectedMvpId = null, selectedCryId = null;
     let selectedConvocados = [], activeTeamsState = { claro: [], oscuro: [] };
+    let sorteoTemporal = null; // Almacena el sorteo antes de publicarlo formalmente
 
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
@@ -328,6 +331,8 @@
       const { data: teamData } = await db.from('configuracion').select('*').eq('clave', 'equipos_activos').single();
       if (teamData && teamData.valor) {
         activeTeamsState = teamData.valor;
+      } else {
+        activeTeamsState = { claro: [], oscuro: [] };
       }
 
       checkSavedLogin();
@@ -413,7 +418,7 @@
 
     function renderHome() {
       const todayDisp = document.getElementById('todayMatchDisplay');
-      if (activeTeamsState.claro.length > 0 && activeTeamsState.oscuro.length > 0) {
+      if (activeTeamsState.claro && activeTeamsState.claro.length > 0 && activeTeamsState.oscuro && activeTeamsState.oscuro.length > 0) {
         const A = players.filter(p => activeTeamsState.claro.includes(p.id)).map(p => `• ${p.nombre}`).join('<br>');
         const B = players.filter(p => activeTeamsState.oscuro.includes(p.id)).map(p => `• ${p.nombre}`).join('<br>');
         
@@ -572,7 +577,8 @@
       renderTeams();
     }
 
-    async function generateBalancedTeams() {
+    // Sorteo previo temporal (permite rehacer las veces que quieras antes de confirmar)
+    function generateBalancedTeams() {
       if (!loggedPlayer?.es_admin) return;
       if (selectedConvocados.length !== 14) { showToast('⚠️ Seleccioná exactamente 14 jugadores'); return; }
       const pool = players.filter(p => selectedConvocados.includes(p.id));
@@ -587,20 +593,45 @@
         if (diff < bestDiff) { bestDiff = diff; bestSplit = { claro: A.map(p=>p.id), oscuro: B.map(p=>p.id) }; }
       }
 
-      activeTeamsState = bestSplit;
-      
-      await db.from('configuracion').upsert({ clave: 'equipos_activos', valor: bestSplit });
-
+      sorteoTemporal = bestSplit; // Se guarda de forma temporal para poder rehacerlo
       renderSortedOutput();
+      showToast('⚖️ Sorteo realizado (podés volver a sortear o publicar)');
+    }
+
+    // Guarda formalmente en Supabase y comparte por WhatsApp
+    async function confirmarYPublicarSorteo() {
+      if (!loggedPlayer?.es_admin) return;
+      if (!sorteoTemporal) {
+        showToast('⚠️ Primero realizá el sorteo');
+        return;
+      }
+
+      const { error } = await db.from('configuracion').upsert({ clave: 'equipos_activos', valor: sorteoTemporal }, { onConflict: 'clave' });
+      if (error) {
+        showToast('❌ Error al guardar equipos');
+        return;
+      }
+
+      activeTeamsState = sorteoTemporal;
+      shareOnWhatsApp();
+      showToast('🚀 Equipos publicados y guardados');
       renderHome();
-      showToast('⚖️ Equipos parejos generados y guardados');
+      renderSortedOutput();
     }
 
     function renderSortedOutput() {
       const tOut = document.getElementById('teamsOutput');
-      if (!tOut || !activeTeamsState.claro.length) return;
-      const A = players.filter(p => activeTeamsState.claro.includes(p.id));
-      const B = players.filter(p => activeTeamsState.oscuro.includes(p.id));
+      if (!tOut) return;
+      
+      const currentView = sorteoTemporal || (activeTeamsState.claro.length > 0 ? activeTeamsState : null);
+
+      if (!currentView || !currentView.claro || currentView.claro.length === 0) {
+        tOut.innerHTML = `<div style="text-align:center; color:var(--muted); font-size:0.82rem; margin-top:10px;">Tocá "Sortear Parejos" para generar los equipos.</div>`;
+        return;
+      }
+
+      const A = players.filter(p => currentView.claro.includes(p.id));
+      const B = players.filter(p => currentView.oscuro.includes(p.id));
       const sumA = A.reduce((s, p) => s + matchVal(p), 0).toFixed(1);
       const sumB = B.reduce((s, p) => s + matchVal(p), 0).toFixed(1);
 
@@ -617,13 +648,19 @@
         </div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:12px;">
           ${loggedPlayer?.es_admin ? `<button class="btn btn-amber" onclick="generateBalancedTeams()">🔄 Volver a Sortear</button>` : ''}
+          ${loggedPlayer?.es_admin && sorteoTemporal ? `<button class="btn btn-emerald" onclick="confirmarYPublicarSorteo()">✅ Publicar Equipos</button>` : ''}
           <button class="btn btn-whatsapp" onclick="shareOnWhatsApp()" style="${!loggedPlayer?.es_admin ? 'grid-column: span 2;' : ''}">📤 Enviar WhatsApp</button>
         </div>`;
     }
 
     function shareOnWhatsApp() {
-      const A = players.filter(p => activeTeamsState.claro.includes(p.id)).map(p => `• ${p.nombre}`).join('\n');
-      const B = players.filter(p => activeTeamsState.oscuro.includes(p.id)).map(p => `• ${p.nombre}`).join('\n');
+      const currentView = sorteoTemporal || activeTeamsState;
+      if (!currentView || !currentView.claro || currentView.claro.length === 0) {
+        showToast('⚠️ No hay equipos para compartir');
+        return;
+      }
+      const A = players.filter(p => currentView.claro.includes(p.id)).map(p => `• ${p.nombre}`).join('\n');
+      const B = players.filter(p => currentView.oscuro.includes(p.id)).map(p => `• ${p.nombre}`).join('\n');
       
       const text = `⚽ *EQUIPOS PARA EL MIÉRCOLES* ⚽\n\n` +
                    `⚪ *EQUIPO CLARO*\n${A}\n\n` +
@@ -671,8 +708,8 @@
 
     async function publishNewMatch() {
       if (!loggedPlayer?.es_admin) return;
-      if (activeTeamsState.claro.length !== 7 || activeTeamsState.oscuro.length !== 7) { 
-        showToast('⚠️ Primero sorteá los equipos en la pestaña Equipos 7v7'); 
+      if (!activeTeamsState.claro || activeTeamsState.claro.length !== 7 || activeTeamsState.oscuro.length !== 7) { 
+        showToast('⚠️ No hay equipos activos publicados para este partido'); 
         return; 
       }
 
@@ -702,6 +739,7 @@
         }
       }
 
+      // Registramos el partido en la tabla partidos
       await db.from('partidos').insert({
         fecha, 
         goles_claro: gC, 
@@ -711,7 +749,13 @@
         goleadores_texto: txt
       });
 
-      showToast('🚀 Partido publicado y estadísticas actualizadas');
+      // Ciclo cumplido: Eliminamos 'equipos_activos' de Supabase para que la tarjeta de equipos activos desaparezca hasta el próximo sorteo
+      await db.from('configuracion').delete().eq('clave', 'equipos_activos');
+
+      sorteoTemporal = null;
+      activeTeamsState = { claro: [], oscuro: [] };
+
+      showToast('🚀 Partido publicado y sección de equipos reiniciada');
       loadAllData();
       openTab('home', document.querySelector('.tab-btn'));
     }

@@ -24,10 +24,12 @@
     /* Login Modal */
     .login-screen { position: fixed; inset: 0; background: rgba(9,13,22,0.96); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
     .login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; width: 100%; max-width: 480px; padding: 20px; text-align: center; }
+    
+    /* Grilla de selección sin cortes */
     .player-select-grid { 
       display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; 
-      max-height: 45vh; overflow-y: auto; -webkit-overflow-scrolling: touch; 
-      margin: 12px 0; text-align: left; padding-right: 4px;
+      height: auto; overflow: visible; 
+      margin: 12px 0; text-align: left; 
     }
     .player-chip { padding: 11px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-weight: 600; font-size: 0.83rem; cursor: pointer; display: flex; align-items: center; gap: 8px; }
     .player-chip.selected { border-color: var(--emerald); background: var(--emerald-dim); color: #6ee7b7; }
@@ -223,7 +225,7 @@
         </div>
         <div id="nonAdminNotice" style="font-size:0.75rem; color:var(--muted); margin-bottom:8px; display:none;">🔒 Solo los administradores pueden armar el sorteo de equipos.</div>
         
-        <div class="player-select-grid" id="convocadosGrid" style="max-height:50vh; grid-template-columns:repeat(auto-fill, minmax(135px, 1fr));"></div>
+        <div class="player-select-grid" id="convocadosGrid" style="grid-template-columns:repeat(auto-fill, minmax(135px, 1fr));"></div>
         <div id="teamsOutput" style="margin-top:14px;"></div>
       </div>
     </section>
@@ -518,7 +520,7 @@
           <div class="nominee-grid">${matchPlayers.map(p => `<div class="nominee-card ${selectedMvpId===p.id?'mvp-active':''}" onclick="selectedMvpId=${p.id};renderVote()">${p.nombre}</div>`).join('')}</div>
         </div>
         <div style="margin:14px 0;"><strong style="font-size:0.82rem; color:var(--rose);">😭 Elegí al Llorón de faltas:</strong>
-          <div class="nominee-grid">${matchPlayers.map(p => `<div class="nominee-card ${selectedCryId===p.id?'cry-active':''}" onclick="selectedCryId=${p.id};renderVote()">${p.nombre}</div>`).join('')}</div>
+          <div class="nominee-grid">${matchPlayers.map(p => `<div class="nominee-card ${selectedCryId===p.id?'cry-active':''}" onclick="selectedCryId=${p.id};renderVote()" >${p.nombre}</div>`).join('')}</div>
         </div>
         <button class="btn btn-emerald" style="width:100%; margin-top:10px;" onclick="submitVote()">🔒 Enviar Voto Anónimo</button>`;
     }

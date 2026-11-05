@@ -295,7 +295,7 @@
     }
 
     const QUORUM_PER_TEAM = 4;
-    let players = [], currentMatch = null, currentVotes = [], allMatches = [];
+    let players = [], currentMatch = null, currentVotes = [];
     let loggedPlayer = null, selectedLoginPlayerId = null;
     let tempRatings = {}, selectedMvpId = null, selectedCryId = null;
     let selectedConvocados = [], activeTeamsState = { claro: [], oscuro: [] };
@@ -348,38 +348,6 @@
       return { claro: cIds, oscuro: oIds };
     }
 
-    // Calcula automáticamente los goles totales sumados de todos los partidos analizando 'goleadores_texto'
-    function calculateTotalGoals() {
-      const goalsMap = {};
-      allMatches.forEach(m => {
-        if (!m.goleadores_texto) return;
-        // Ej: "Gonza D x1, Cote E x3, Lao C x2" o similar
-        const parts = m.goleadores_texto.split(/[,;]/);
-        parts.forEach(part => {
-          const match = part.trim().match(/(.+?)\s*x\s*(\d+)/i) || part.trim().match(/(.+?)\s*(\d+)$/);
-          if (match) {
-            let name = match[1].trim();
-            let qty = parseInt(match[2], 10) || 1;
-            // Buscamos jugador que coincida con el nombre
-            let found = players.find(p => normalizeStr(p.nombre).includes(normalizeStr(name)) || normalizeStr(name).includes(normalizeStr(p.nombre)));
-            if (found) {
-              goalsMap[found.id] = (goalsMap[found.id] || 0) + qty;
-            }
-          } else {
-            // Si no tiene x1 explícito pero tiene nombre, sumamos 1 por mención
-            let name = part.trim();
-            if (name.length > 1) {
-              let found = players.find(p => normalizeStr(p.nombre).includes(normalizeStr(name)));
-              if (found) {
-                goalsMap[found.id] = (goalsMap[found.id] || 0) + 1;
-              }
-            }
-          }
-        });
-      });
-      return goalsMap;
-    }
-
     async function loadAllData() {
       if (!db) { showToast('⚠️ Error cargando librería de Supabase'); return; }
       
@@ -395,11 +363,9 @@
       }
 
       try {
-        const { data: mData } = await db.from('partidos').select('*').order('created_at', { ascending: false });
-        allMatches = mData || [];
-        currentMatch = allMatches.length > 0 ? allMatches[0] : null;
+        const { data: mData } = await db.from('partidos').select('*').order('created_at', { ascending: false }).limit(1);
+        currentMatch = (mData && mData.length > 0) ? mData[0] : null;
       } catch (e) {
-        allMatches = [];
         currentMatch = null;
       }
 
@@ -607,14 +573,10 @@
 
       if (rW) rW.innerHTML = renderList(sortedWinrate, p => `${p.pj ? Math.round((p.pg/p.pj)*100) : 0}% (${p.pg || 0}/${p.pj || 0})`);
       
-      // Goleadores automáticos calculados desde los textos de goles de los partidos
-      const calculatedGoals = calculateTotalGoals();
-      const playersWithGoals = players.map(p => ({
-        ...p,
-        totalGolesCalculados: calculatedGoals[p.id] !== undefined ? calculatedGoals[p.id] : (p.goles || 0)
-      })).sort((a,b) => b.totalGolesCalculados - a.totalGolesCalculados);
-
-      if (rG) rG.innerHTML = renderList(playersWithGoals, p => `${p.totalGolesCalculados} ⚽`);
+      // Goleadores ordenados directamente por la columna goles de la tabla jugadores (controlada desde Admin)
+      const sortedGoals = [...players].sort((a,b) => (b.goles || 0) - (a.goles || 0));
+      if (rG) rG.innerHTML = renderList(sortedGoals, p => `${p.goles || 0} ⚽`);
+      
       if (rM) rM.innerHTML = renderList([...players].sort((a,b) => (b.mvps || 0) - (a.mvps || 0)), p => `${p.mvps || 0} ⭐`);
       if (rC) rC.innerHTML = renderList([...players].sort((a,b) => (b.lloron || 0) - (a.lloron || 0)), p => `${p.lloron || 0} 😭`);
     }

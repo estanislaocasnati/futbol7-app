@@ -295,7 +295,7 @@
     let loggedPlayer = null, selectedLoginPlayerId = null;
     let tempRatings = {}, selectedMvpId = null, selectedCryId = null;
     let selectedConvocados = [], activeTeamsState = { claro: [], oscuro: [] };
-    let sorteoTemporal = null; // Almacena el sorteo antes de publicarlo formalmente
+    let sorteoTemporal = null;
 
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
@@ -516,6 +516,7 @@
         return; 
       }
 
+      // Tomamos los IDs del último partido registrado o de los equipos activos provisionales
       let matchIds = [];
       if (currentMatch.equipo_claro && currentMatch.equipo_oscuro) {
         matchIds = [...currentMatch.equipo_claro, ...currentMatch.equipo_oscuro];
@@ -526,7 +527,7 @@
       const matchPlayers = players.filter(p => matchIds.includes(p.id) && p.id !== loggedPlayer.id);
 
       if (matchPlayers.length === 0) {
-        area.innerHTML = `<p style="color:var(--muted); font-size:0.82rem;">No se encontraron jugadores asignados a este partido para votar.</p>`;
+        area.innerHTML = `<p style="color:var(--muted); font-size:0.82rem;">No se encontraron jugadores asignados a este partido para votar. Asegurate de que el partido tenga los equipos cargados.</p>`;
         return;
       }
 

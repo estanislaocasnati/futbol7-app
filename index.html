@@ -155,7 +155,6 @@
 
     <!-- 1. INICIO -->
     <section id="sec-home" class="section active">
-      <!-- TARJETA DINÁMICA: SE OCULTA CUANDO SE CARGA EL RESULTADO Y VUELVE CON EL NUEVO SORTEO -->
       <div class="card" id="todayMatchCard" style="border-color:var(--emerald); background:rgba(16,185,129,0.04); display:none;">
         <div class="card-header">
           <div class="card-title" style="color:var(--emerald);">⚽ Partido de Hoy / Próximo Sorteo</div>
@@ -208,7 +207,6 @@
       <div class="card">
         <div class="card-header">
           <div class="card-title">🗳️ Votación Anónima (<span id="voterNameLabel" style="color:var(--emerald);"></span>)</div>
-          <button class="btn btn-ghost" onclick="autoFillRatings()">⚡ Autocompletar 4s</button>
         </div>
         <div id="voteContentArea"></div>
       </div>
@@ -264,7 +262,6 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    // Limpiamos cualquier Service Worker viejo que pueda estar reteniendo caché rota
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(regs => {
         for (let reg of regs) reg.unregister();
@@ -298,13 +295,12 @@
     }
 
     const QUORUM_PER_TEAM = 4;
-    let players = [], currentMatch = null, currentVotes = [];
+    let players = [], currentMatch = null, currentVotes = [], allMatches = [];
     let loggedPlayer = null, selectedLoginPlayerId = null;
     let tempRatings = {}, selectedMvpId = null, selectedCryId = null;
     let selectedConvocados = [], activeTeamsState = { claro: [], oscuro: [] };
     let sorteoTemporal = null;
 
-    // Respaldo de nombres del partido de ayer por si equipo_claro / equipo_oscuro está vacío en la tabla partidos
     const FALLBACK_CLARO_NAMES = ['Andres B', 'Cristian D', 'Fede Riveros (Inv)', 'Franco M', 'Manu S', 'Martin R', 'Nahuel B'];
     const FALLBACK_OSCURO_NAMES = ['Bruno L', 'Cote E', 'Gonza D', 'Lao C', 'Manu M', 'Santi Moyano (Inv)', 'Tomas A'];
 
@@ -352,6 +348,38 @@
       return { claro: cIds, oscuro: oIds };
     }
 
+    // Calcula automáticamente los goles totales sumados de todos los partidos analizando 'goleadores_texto'
+    function calculateTotalGoals() {
+      const goalsMap = {};
+      allMatches.forEach(m => {
+        if (!m.goleadores_texto) return;
+        // Ej: "Gonza D x1, Cote E x3, Lao C x2" o similar
+        const parts = m.goleadores_texto.split(/[,;]/);
+        parts.forEach(part => {
+          const match = part.trim().match(/(.+?)\s*x\s*(\d+)/i) || part.trim().match(/(.+?)\s*(\d+)$/);
+          if (match) {
+            let name = match[1].trim();
+            let qty = parseInt(match[2], 10) || 1;
+            // Buscamos jugador que coincida con el nombre
+            let found = players.find(p => normalizeStr(p.nombre).includes(normalizeStr(name)) || normalizeStr(name).includes(normalizeStr(p.nombre)));
+            if (found) {
+              goalsMap[found.id] = (goalsMap[found.id] || 0) + qty;
+            }
+          } else {
+            // Si no tiene x1 explícito pero tiene nombre, sumamos 1 por mención
+            let name = part.trim();
+            if (name.length > 1) {
+              let found = players.find(p => normalizeStr(p.nombre).includes(normalizeStr(name)));
+              if (found) {
+                goalsMap[found.id] = (goalsMap[found.id] || 0) + 1;
+              }
+            }
+          }
+        });
+      });
+      return goalsMap;
+    }
+
     async function loadAllData() {
       if (!db) { showToast('⚠️ Error cargando librería de Supabase'); return; }
       
@@ -367,10 +395,12 @@
       }
 
       try {
-        const { data: mData } = await db.from('partidos').select('*').order('created_at', { ascending: false }).limit(1);
-        currentMatch = (mData && mData.length > 0) ? mData[0] : null;
+        const { data: mData } = await db.from('partidos').select('*').order('created_at', { ascending: false });
+        allMatches = mData || [];
+        currentMatch = allMatches.length > 0 ? allMatches[0] : null;
       } catch (e) {
-        console.error(e);
+        allMatches = [];
+        currentMatch = null;
       }
 
       if (currentMatch) {
@@ -567,8 +597,24 @@
       const rM = document.getElementById('rankMvp');
       const rC = document.getElementById('rankCry');
 
-      if (rW) rW.innerHTML = renderList([...players].sort((a,b) => (b.pj?b.pg/b.pj:0) - (a.pj?a.pg/a.pj:0)), p => `${p.pj ? Math.round((p.pg/p.pj)*100) : 0}% (${p.pg || 0}/${p.pj || 0})`);
-      if (rG) rG.innerHTML = renderList([...players].sort((a,b) => (b.goles || 0) - (a.goles || 0)), p => `${p.goles || 0} ⚽`);
+      // Win Rate ordenado por porcentaje y desempate por partidos ganados
+      const sortedWinrate = [...players].sort((a,b) => {
+        const rateA = a.pj > 0 ? (a.pg / a.pj) : 0;
+        const rateB = b.pj > 0 ? (b.pg / b.pj) : 0;
+        if (rateB !== rateA) return rateB - rateA;
+        return (b.pg || 0) - (a.pg || 0);
+      });
+
+      if (rW) rW.innerHTML = renderList(sortedWinrate, p => `${p.pj ? Math.round((p.pg/p.pj)*100) : 0}% (${p.pg || 0}/${p.pj || 0})`);
+      
+      // Goleadores automáticos calculados desde los textos de goles de los partidos
+      const calculatedGoals = calculateTotalGoals();
+      const playersWithGoals = players.map(p => ({
+        ...p,
+        totalGolesCalculados: calculatedGoals[p.id] !== undefined ? calculatedGoals[p.id] : (p.goles || 0)
+      })).sort((a,b) => b.totalGolesCalculados - a.totalGolesCalculados);
+
+      if (rG) rG.innerHTML = renderList(playersWithGoals, p => `${p.totalGolesCalculados} ⚽`);
       if (rM) rM.innerHTML = renderList([...players].sort((a,b) => (b.mvps || 0) - (a.mvps || 0)), p => `${p.mvps || 0} ⭐`);
       if (rC) rC.innerHTML = renderList([...players].sort((a,b) => (b.lloron || 0) - (a.lloron || 0)), p => `${p.lloron || 0} 😭`);
     }
@@ -591,7 +637,6 @@
       const matchIds = [...teams.claro, ...teams.oscuro];
       let matchPlayers = players.filter(p => matchIds.includes(Number(p.id)) && Number(p.id) !== Number(loggedPlayer.id));
 
-      // Si por algún motivo los IDs no cruzaron, mostramos los jugadores disponibles menos uno mismo
       if (matchPlayers.length === 0 && players.length > 0) {
         matchPlayers = players.filter(p => Number(p.id) !== Number(loggedPlayer.id));
       }
@@ -620,17 +665,6 @@
     }
 
     function setRate(pid, val) { tempRatings[pid] = val; renderVote(); }
-    
-    function autoFillRatings() {
-      const teams = getMatchTeamsForVoting();
-      const matchIds = [...teams.claro, ...teams.oscuro];
-      players.forEach(p => {
-        if ((matchIds.length === 0 || matchIds.includes(Number(p.id))) && Number(p.id) !== Number(loggedPlayer?.id)) {
-          tempRatings[p.id] = 4;
-        }
-      });
-      renderVote();
-    }
 
     async function submitVote() {
       if (!selectedMvpId || !selectedCryId) { showToast('⚠️ Elegí MVP y Llorón antes de enviar'); return; }

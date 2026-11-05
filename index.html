@@ -505,16 +505,34 @@
     function renderVote() {
       const area = document.getElementById('voteContentArea');
       if (!area) return;
-      if (!currentMatch || !loggedPlayer) { area.innerHTML = `<p style="color:var(--muted); font-size:0.82rem;">No hay partido activo para votar.</p>`; return; }
+      if (!currentMatch || !loggedPlayer) { 
+        area.innerHTML = `<p style="color:var(--muted); font-size:0.82rem;">No hay partido activo para votar.</p>`; 
+        return; 
+      }
 
       const already = currentVotes.find(v => v.votante_id === loggedPlayer.id);
-      if (already) { area.innerHTML = `<div style="padding:14px; background:var(--emerald-dim); border-radius:10px; color:#6ee7b7; font-weight:700;">✅ Ya enviaste tu voto anónimo en esta fecha.</div>`; return; }
+      if (already) { 
+        area.innerHTML = `<div style="padding:14px; background:var(--emerald-dim); border-radius:10px; color:#6ee7b7; font-weight:700;">✅ Ya enviaste tu voto anónimo en esta fecha.</div>`; 
+        return; 
+      }
 
-      const matchIds = [...(currentMatch.equipo_claro || []), ...(currentMatch.equipo_oscuro || [])];
+      let matchIds = [];
+      if (currentMatch.equipo_claro && currentMatch.equipo_oscuro) {
+        matchIds = [...currentMatch.equipo_claro, ...currentMatch.equipo_oscuro];
+      } else if (activeTeamsState.claro && activeTeamsState.oscuro) {
+        matchIds = [...activeTeamsState.claro, ...activeTeamsState.oscuro];
+      }
+
       const matchPlayers = players.filter(p => matchIds.includes(p.id) && p.id !== loggedPlayer.id);
+
+      if (matchPlayers.length === 0) {
+        area.innerHTML = `<p style="color:var(--muted); font-size:0.82rem;">No se encontraron jugadores asignados a este partido para votar.</p>`;
+        return;
+      }
 
       area.innerHTML = `
         <div style="margin-bottom:14px;">
+          <p style="font-size:0.78rem; color:var(--muted); margin-bottom:10px;">Puntuá el desempeño (1 al 5) de tus compañeros en el partido:</p>
           ${matchPlayers.map(p => `
             <div class="vote-item">
               <strong>${p.nombre}</strong>
@@ -535,21 +553,39 @@
 
     async function submitVote() {
       if (!selectedMvpId || !selectedCryId) { showToast('⚠️ Elegí MVP y Llorón antes de enviar'); return; }
+      
       const isClaro = (currentMatch.equipo_claro || []).includes(loggedPlayer.id);
       const equipoVotante = isClaro ? 'claro' : 'oscuro';
 
       const { error } = await db.from('votos').insert({
-        partido_id: currentMatch.id, votante_id: loggedPlayer.id,
-        equipo_votante: equipoVotante, mvp_id: selectedMvpId, lloron_id: selectedCryId, puntajes: tempRatings
+        partido_id: currentMatch.id, 
+        votante_id: loggedPlayer.id,
+        equipo_votante: equipoVotante, 
+        mvp_id: selectedMvpId, 
+        lloron_id: selectedCryId, 
+        puntajes: tempRatings
       });
-      if (error) { showToast('❌ Error o voto duplicado'); return; }
+
+      if (error) { 
+        showToast('❌ Error o voto duplicado'); 
+        return; 
+      }
 
       const mvpP = players.find(p => p.id === selectedMvpId);
       const cryP = players.find(p => p.id === selectedCryId);
-      if (mvpP) await db.from('jugadores').update({ mvps: mvpP.mvps + 1 }).eq('id', mvpP.id);
-      if (cryP) await db.from('jugadores').update({ lloron: cryP.lloron + 1 }).eq('id', cryP.id);
+      if (mvpP) await db.from('jugadores').update({ mvps: Number(mvpP.mvps || 0) + 1 }).eq('id', mvpP.id);
+      if (cryP) await db.from('jugadores').update({ lloron: Number(cryP.lloron || 0) + 1 }).eq('id', cryP.id);
 
-      showToast('✅ ¡Voto guardado!');
+      for (const [targetId, score] of Object.entries(tempRatings)) {
+        const targetPlayer = players.find(p => p.id === Number(targetId));
+        if (targetPlayer) {
+          const currentRacha = Number(targetPlayer.racha || 3.0);
+          const newRacha = Number(((currentRacha * 3 + Number(score)) / 4).toFixed(2));
+          await db.from('jugadores').update({ racha: newRacha }).eq('id', targetPlayer.id);
+        }
+      }
+
+      showToast('✅ ¡Votos y estadísticas actualizadas!');
       await loadAllData();
     }
 
@@ -577,7 +613,6 @@
       renderTeams();
     }
 
-    // Sorteo previo temporal (permite rehacer las veces que quieras antes de confirmar)
     function generateBalancedTeams() {
       if (!loggedPlayer?.es_admin) return;
       if (selectedConvocados.length !== 14) { showToast('⚠️ Seleccioná exactamente 14 jugadores'); return; }
@@ -593,12 +628,11 @@
         if (diff < bestDiff) { bestDiff = diff; bestSplit = { claro: A.map(p=>p.id), oscuro: B.map(p=>p.id) }; }
       }
 
-      sorteoTemporal = bestSplit; // Se guarda de forma temporal para poder rehacerlo
+      sorteoTemporal = bestSplit;
       renderSortedOutput();
       showToast('⚖️ Sorteo realizado (podés volver a sortear o publicar)');
     }
 
-    // Guarda formalmente en Supabase y comparte por WhatsApp
     async function confirmarYPublicarSorteo() {
       if (!loggedPlayer?.es_admin) return;
       if (!sorteoTemporal) {
@@ -739,7 +773,6 @@
         }
       }
 
-      // Registramos el partido en la tabla partidos
       await db.from('partidos').insert({
         fecha, 
         goles_claro: gC, 
@@ -749,7 +782,6 @@
         goleadores_texto: txt
       });
 
-      // Ciclo cumplido: Eliminamos 'equipos_activos' de Supabase para que la tarjeta de equipos activos desaparezca hasta el próximo sorteo
       await db.from('configuracion').delete().eq('clave', 'equipos_activos');
 
       sorteoTemporal = null;

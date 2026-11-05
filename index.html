@@ -505,8 +505,8 @@
     function renderVote() {
       const area = document.getElementById('voteContentArea');
       if (!area) return;
-      if (!currentMatch || !loggedPlayer) { 
-        area.innerHTML = `<p style="color:var(--muted); font-size:0.82rem;">No hay partido activo para votar.</p>`; 
+      if (!loggedPlayer) { 
+        area.innerHTML = `<p style="color:var(--muted); font-size:0.82rem;">Iniciá sesión para poder votar.</p>`; 
         return; 
       }
 
@@ -516,18 +516,18 @@
         return; 
       }
 
-      // Tomamos los IDs del último partido registrado o de los equipos activos provisionales
+      // Tomamos los IDs de los equipos activos de la semana o, si ya se publicó, del último partido guardado
       let matchIds = [];
-      if (currentMatch.equipo_claro && currentMatch.equipo_oscuro) {
-        matchIds = [...currentMatch.equipo_claro, ...currentMatch.equipo_oscuro];
-      } else if (activeTeamsState.claro && activeTeamsState.oscuro) {
+      if (activeTeamsState.claro && activeTeamsState.claro.length > 0) {
         matchIds = [...activeTeamsState.claro, ...activeTeamsState.oscuro];
+      } else if (currentMatch) {
+        matchIds = [...(currentMatch.equipo_claro || []), ...(currentMatch.equipo_oscuro || [])];
       }
 
       const matchPlayers = players.filter(p => matchIds.includes(p.id) && p.id !== loggedPlayer.id);
 
       if (matchPlayers.length === 0) {
-        area.innerHTML = `<p style="color:var(--muted); font-size:0.82rem;">No se encontraron jugadores asignados a este partido para votar. Asegurate de que el partido tenga los equipos cargados.</p>`;
+        area.innerHTML = `<p style="color:var(--muted); font-size:0.82rem;">No hay jugadores asignados para votar en este momento. Asegurate de tener equipos sorteados o un partido activo.</p>`;
         return;
       }
 
@@ -555,8 +555,13 @@
     async function submitVote() {
       if (!selectedMvpId || !selectedCryId) { showToast('⚠️ Elegí MVP y Llorón antes de enviar'); return; }
       
-      const isClaro = (currentMatch.equipo_claro || []).includes(loggedPlayer.id);
+      const isClaro = currentMatch && (currentMatch.equipo_claro || []).includes(loggedPlayer.id);
       const equipoVotante = isClaro ? 'claro' : 'oscuro';
+
+      if (!currentMatch) {
+        showToast('⚠️ No hay un partido registrado para asociar el voto');
+        return;
+      }
 
       const { error } = await db.from('votos').insert({
         partido_id: currentMatch.id, 
@@ -658,7 +663,7 @@
       const tOut = document.getElementById('teamsOutput');
       if (!tOut) return;
       
-      const currentView = sorteoTemporal || (activeTeamsState.claro.length > 0 ? activeTeamsState : null);
+      const currentView = sorteoTemporal || (activeTeamsState.claro && activeTeamsState.claro.length > 0 ? activeTeamsState : null);
 
       if (!currentView || !currentView.claro || currentView.claro.length === 0) {
         tOut.innerHTML = `<div style="text-align:center; color:var(--muted); font-size:0.82rem; margin-top:10px;">Tocá "Sortear Parejos" para generar los equipos.</div>`;
